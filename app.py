@@ -146,101 +146,118 @@ def create_coverage_map(ds):
             # Add hover tooltip
             marker.add_child(folium.Tooltip(f'Lat: {float(lat):.4f}, Lon: {float(lon):.4f}'))
     
-    # Add click handler for point selection with grid snapping
-    # Convert coordinate arrays to lists for JavaScript
+    # Add grid information as data attributes and simpler click handling
     lat_values = [float(lat) for lat in lats]
     lon_values = [float(lon) for lon in lons]
     
+    # Add custom JavaScript to handle clicks
     click_script = f"""
     <script>
-    var mapObj = {m.get_name()};
-    var gridLats = {lat_values};
-    var gridLons = {lon_values};
-    
-    // Function to find nearest grid point
-    function findNearestGridPoint(clickLat, clickLon) {{
-        let minDist = Infinity;
-        let nearestLat = clickLat;
-        let nearestLon = clickLon;
+    // Wait for page to load
+    document.addEventListener('DOMContentLoaded', function() {{
+        console.log('Setting up map click handler');
+        var mapObj = window['{m.get_name()}'];
+        var gridLats = {lat_values};
+        var gridLons = {lon_values};
         
-        for (let lat of gridLats) {{
-            for (let lon of gridLons) {{
-                let dist = Math.sqrt(Math.pow(lat - clickLat, 2) + Math.pow(lon - clickLon, 2));
-                if (dist < minDist) {{
-                    minDist = dist;
-                    nearestLat = lat;
-                    nearestLon = lon;
-                }}
-            }}
+        if (!mapObj) {{
+            console.error('Map object not found: {m.get_name()}');
+            return;
         }}
-        return {{lat: nearestLat, lon: nearestLon}};
-    }}
-    
-    mapObj.on('click', function(e) {{
-        const clickLat = e.latlng.lat;
-        const clickLng = e.latlng.lng;
         
-        // Find nearest grid point
-        const nearest = findNearestGridPoint(clickLat, clickLng);
-        
-        // Remove previous selection markers
-        mapObj.eachLayer(function(layer) {{
-            if (layer.options && layer.options.className === 'selected-point') {{
-                mapObj.removeLayer(layer);
+        // Function to find nearest grid point
+        function findNearestGridPoint(clickLat, clickLon) {{
+            let minDist = Infinity;
+            let nearestLat = clickLat;
+            let nearestLon = clickLon;
+            
+            for (let lat of gridLats) {{
+                for (let lon of gridLons) {{
+                    let dist = Math.sqrt(Math.pow(lat - clickLat, 2) + Math.pow(lon - clickLon, 2));
+                    if (dist < minDist) {{
+                        minDist = dist;
+                        nearestLat = lat;
+                        nearestLon = lon;
+                    }}
+                }}
             }}
+            return {{lat: nearestLat, lon: nearestLon}};
+        }}
+        
+        mapObj.on('click', function(e) {{
+            console.log('Map clicked at:', e.latlng.lat, e.latlng.lng);
+            
+            const clickLat = e.latlng.lat;
+            const clickLng = e.latlng.lng;
+            
+            // Find nearest grid point
+            const nearest = findNearestGridPoint(clickLat, clickLng);
+            console.log('Nearest grid point:', nearest.lat, nearest.lon);
+            
+            // Remove previous selection markers
+            mapObj.eachLayer(function(layer) {{
+                if (layer.options && layer.options.className === 'selected-point') {{
+                    mapObj.removeLayer(layer);
+                }}
+            }});
+            
+            // Add selection marker at nearest grid point
+            L.circleMarker([nearest.lat, nearest.lon], {{
+                radius: 12,
+                color: 'red',
+                fillColor: 'yellow',
+                fillOpacity: 0.9,
+                weight: 3,
+                className: 'selected-point'
+            }}).addTo(mapObj)
+              .bindPopup('Selected Grid Point<br>Lat: ' + nearest.lat.toFixed(4) + '<br>Lon: ' + nearest.lon.toFixed(4))
+              .openPopup();
+            
+            console.log('Sending request to /get_timeseries');
+            
+            // Send coordinates to Flask app
+            fetch('/get_timeseries', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                }},
+                body: JSON.stringify({{lat: nearest.lat, lon: nearest.lon}})
+            }})
+            .then(response => {{
+                console.log('Got response:', response);
+                return response.json();
+            }})
+            .then(data => {{
+                console.log('Time series data:', data);
+                if (data.success && data.charts) {{
+                    if (typeof window.updateCharts === 'function') {{
+                        console.log('Calling updateCharts');
+                        window.updateCharts(data.charts);
+                    }} else {{
+                        console.error('updateCharts function not available');
+                    }}
+                    // Update selected coordinates display
+                    const coordsEl = document.getElementById('selectedCoords');
+                    if (coordsEl) {{
+                        coordsEl.textContent = 'Selected point: ' + nearest.lat.toFixed(4) + ', ' + nearest.lon.toFixed(4);
+                    }}
+                }} else {{
+                    console.error('Time series error:', data.error || 'No charts returned');
+                    alert('Error generating time series: ' + (data.error || 'No charts returned'));
+                }}
+            }}).catch(error => {{
+                console.error('Error fetching time series:', error);
+                alert('Network error: ' + error.message);
+            }});
         }});
         
-        // Add selection marker at nearest grid point
-        L.circleMarker([nearest.lat, nearest.lon], {{
-            radius: 12,
-            color: 'red',
-            fillColor: 'yellow',
-            fillOpacity: 0.9,
-            weight: 3,
-            className: 'selected-point'
-        }}).addTo(mapObj)
-          .bindPopup('Selected Grid Point<br>Lat: ' + nearest.lat.toFixed(4) + '<br>Lon: ' + nearest.lon.toFixed(4))
-          .openPopup();
-        
-        console.log('Grid point selected:', nearest.lat, nearest.lon);
-        
-        // Send coordinates to Flask app
-        fetch('/get_timeseries', {{
-            method: 'POST',
-            headers: {{
-                'Content-Type': 'application/json',
-            }},
-            body: JSON.stringify({{lat: nearest.lat, lon: nearest.lon}})
-        }})
-        .then(response => response.json())
-        .then(data => {{
-            console.log('Time series response:', data);
-            if (data.success) {{
-                if (typeof window.updateCharts === 'function') {{
-                    window.updateCharts(data.charts);
-                }}
-                // Update selected coordinates display
-                const coordsEl = document.getElementById('selectedCoords');
-                if (coordsEl) {{
-                    coordsEl.textContent = 'Selected point: ' + nearest.lat.toFixed(4) + ', ' + nearest.lon.toFixed(4);
-                }}
-            }} else {{
-                console.error('Time series error:', data.error);
-                alert('Error generating time series: ' + data.error);
-            }}
-        }}).catch(error => {{
-            console.error('Error fetching time series:', error);
-            alert('Network error: ' + error.message);
-        }});
+        console.log('Map click handler set up successfully');
     }});
     </script>
     """
     
-    # Create MacroElement to inject the script
-    from branca.element import Template
-    macro = MacroElement()
-    macro._template = Template(click_script)
-    m.get_root().add_child(macro)
+    # Add the script directly to the map HTML
+    m.get_root().add_child(folium.Element(click_script))
     
     return m
 
