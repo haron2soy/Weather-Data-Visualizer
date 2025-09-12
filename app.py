@@ -40,7 +40,7 @@ def extract_netcdf_info(filepath):
                 coords[dim] = {
                     'min': float(ds.coords[dim].min().values),
                     'max': float(ds.coords[dim].max().values),
-                    'size': ds.dims[dim]
+                    'size': int(ds.sizes[dim])
                 }
         
         # Get variable information
@@ -48,7 +48,7 @@ def extract_netcdf_info(filepath):
         for var in ds.data_vars:
             variables[var] = {
                 'dims': list(ds[var].dims),
-                'shape': list(ds[var].shape),
+                'shape': [int(x) for x in ds[var].shape],
                 'attrs': dict(ds[var].attrs) if hasattr(ds[var], 'attrs') else {}
             }
         
