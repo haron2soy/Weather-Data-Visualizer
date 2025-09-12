@@ -182,15 +182,18 @@ def create_coverage_map(ds):
         .then(data => {{
             console.log('Time series response:', data);
             if (data.success && data.charts) {{
-                if (typeof window.updateCharts === 'function') {{
-                    window.updateCharts(data.charts);
+                // Call parent window functions since we're in an iframe
+                if (window.parent && typeof window.parent.updateCharts === 'function') {{
+                    window.parent.updateCharts(data.charts);
                 }} else {{
-                    console.error('updateCharts function not available');
+                    console.error('updateCharts function not available on parent window');
                 }}
-                // Update selected coordinates display
-                const coordsEl = document.getElementById('selectedCoords');
-                if (coordsEl) {{
-                    coordsEl.textContent = 'Selected point: ' + lat.toFixed(4) + ', ' + lon.toFixed(4);
+                // Update selected coordinates display in parent window
+                if (window.parent && window.parent.document) {{
+                    const coordsEl = window.parent.document.getElementById('selectedCoords');
+                    if (coordsEl) {{
+                        coordsEl.textContent = 'Selected point: ' + lat.toFixed(4) + ', ' + lon.toFixed(4);
+                    }}
                 }}
             }} else {{
                 console.error('Time series error:', data.error || 'No charts returned');
@@ -207,8 +210,25 @@ def create_coverage_map(ds):
     </script>
     """
     
-    # Add the script directly to the map HTML
-    m.get_root().add_child(folium.Element(click_script))
+    # Add the script directly to the map HTML with marker click binding
+    map_name = m.get_name()
+    enhanced_script = click_script + f"""
+    <script>
+    // Bind click events directly to markers after map loads
+    {map_name}.whenReady(function() {{
+        {map_name}.eachLayer(function(layer) {{
+            if (layer instanceof L.CircleMarker) {{
+                layer.on('click', function(e) {{
+                    e.originalEvent.stopPropagation();
+                    handleGridClick(e.latlng.lat, e.latlng.lng);
+                }});
+            }}
+        }});
+    }});
+    </script>
+    """
+    
+    m.get_root().add_child(folium.Element(enhanced_script))
     
     return m
 

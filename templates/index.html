@@ -92,32 +92,14 @@
                     </div>
                 </div>
                 
-                <!-- Grid Point Selection -->
+                <!-- Selected Coordinates Display -->
                 <div id="gridSection" style="display: none;">
                     <div class="card">
                         <div class="card-header">
-                            <h3>Select Grid Point for Time Series</h3>
-                            <p class="mb-0">Choose coordinates to view time series data</p>
+                            <h3>Selected Grid Point</h3>
                         </div>
                         <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <label for="latSelect" class="form-label">Latitude:</label>
-                                    <select id="latSelect" class="form-select">
-                                        <option value="">Select latitude...</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="lonSelect" class="form-label">Longitude:</label>
-                                    <select id="lonSelect" class="form-select">
-                                        <option value="">Select longitude...</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="mt-3">
-                                <button id="getTimeSeriesBtn" class="btn btn-primary" disabled>Get Time Series</button>
-                                <span id="loadingSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;"></span>
-                            </div>
+                            <p id="selectedCoords" class="text-muted">Click on a blue marker on the map to select coordinates and generate time series</p>
                         </div>
                     </div>
                 </div>
@@ -146,10 +128,6 @@
         const mapSection = document.getElementById('mapSection');
         const gridSection = document.getElementById('gridSection');
         const chartsSection = document.getElementById('chartsSection');
-        const latSelect = document.getElementById('latSelect');
-        const lonSelect = document.getElementById('lonSelect');
-        const getTimeSeriesBtn = document.getElementById('getTimeSeriesBtn');
-        const loadingSpinner = document.getElementById('loadingSpinner');
 
         // Drag and drop functionality
         dropZone.addEventListener('click', () => fileInput.click());
@@ -206,9 +184,8 @@
                     if (data.map_html) {
                         displayMap(data.map_html);
                     }
-                    if (data.info && data.info.coords) {
-                        setupGridSelection(data.info.coords);
-                    }
+                    // Show the grid selection section to indicate map clicking is available
+                    gridSection.style.display = 'block';
                 } else {
                     alert('Error: ' + data.error);
                 }
@@ -267,90 +244,6 @@
             chartsSection.style.display = 'block';
         }
 
-        function setupGridSelection(coords) {
-            // Clear existing options
-            latSelect.innerHTML = '<option value="">Select latitude...</option>';
-            lonSelect.innerHTML = '<option value="">Select longitude...</option>';
-            
-            // Populate latitude options
-            if (coords.latitude) {
-                const latData = coords.latitude;
-                const step = (latData.max - latData.min) / (latData.size - 1);
-                for (let i = 0; i < latData.size; i++) {
-                    const lat = latData.min + (i * step);
-                    const option = document.createElement('option');
-                    option.value = lat.toFixed(4);
-                    option.textContent = lat.toFixed(4);
-                    latSelect.appendChild(option);
-                }
-            }
-            
-            // Populate longitude options
-            if (coords.longitude) {
-                const lonData = coords.longitude;
-                const step = (lonData.max - lonData.min) / (lonData.size - 1);
-                for (let i = 0; i < lonData.size; i++) {
-                    const lon = lonData.min + (i * step);
-                    const option = document.createElement('option');
-                    option.value = lon.toFixed(4);
-                    option.textContent = lon.toFixed(4);
-                    lonSelect.appendChild(option);
-                }
-            }
-            
-            // Show the grid selection section
-            gridSection.style.display = 'block';
-        }
-
-        // Event handlers for dropdown selection
-        function checkButtonState() {
-            const latSelected = latSelect.value !== '';
-            const lonSelected = lonSelect.value !== '';
-            getTimeSeriesBtn.disabled = !(latSelected && lonSelected);
-        }
-
-        latSelect.addEventListener('change', checkButtonState);
-        lonSelect.addEventListener('change', checkButtonState);
-
-        // Get Time Series button handler
-        getTimeSeriesBtn.addEventListener('click', function() {
-            const lat = parseFloat(latSelect.value);
-            const lon = parseFloat(lonSelect.value);
-            
-            if (!lat || !lon) {
-                alert('Please select both latitude and longitude');
-                return;
-            }
-
-            loadingSpinner.style.display = 'inline-block';
-            getTimeSeriesBtn.disabled = true;
-
-            fetch('/get_timeseries', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({lat: lat, lon: lon})
-            })
-            .then(response => response.json())
-            .then(data => {
-                loadingSpinner.style.display = 'none';
-                getTimeSeriesBtn.disabled = false;
-                
-                if (data.success && data.charts) {
-                    updateCharts(data.charts);
-                    document.getElementById('selectedCoords').textContent = 
-                        `Selected point: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                } else {
-                    alert('Error generating time series: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                loadingSpinner.style.display = 'none';
-                getTimeSeriesBtn.disabled = false;
-                alert('Network error: ' + error.message);
-            });
-        });
 
         // Global function for map click handling (called from Flask-generated map)
         window.updateCharts = updateCharts;
