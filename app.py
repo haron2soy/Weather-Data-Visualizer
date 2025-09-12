@@ -131,128 +131,79 @@ def create_coverage_map(ds):
     # Add clickable markers for each grid point
     for lat in lats:
         for lon in lons:
+            lat_val = float(lat)
+            lon_val = float(lon)
+            
             marker = folium.CircleMarker(
-                location=[float(lat), float(lon)],
+                location=[lat_val, lon_val],
                 radius=8,
-                popup=f'Grid Point<br>Lat: {float(lat):.4f}<br>Lon: {float(lon):.4f}<br>Click for time series',
+                popup=folium.Popup(
+                    f'''<div onclick="handleGridClick({lat_val}, {lon_val})" style="cursor: pointer;">
+                    <b>Grid Point</b><br>
+                    Lat: {lat_val:.4f}<br>
+                    Lon: {lon_val:.4f}<br>
+                    <i>Click for time series</i>
+                    </div>''', 
+                    max_width=200
+                ),
+                tooltip=f'Click: Lat {lat_val:.4f}, Lon {lon_val:.4f}',
                 color='blue',
                 fill=True,
                 fillColor='lightblue',
                 fillOpacity=0.8,
                 weight=2
             )
-            marker.add_to(m)
             
-            # Add hover tooltip
-            marker.add_child(folium.Tooltip(f'Lat: {float(lat):.4f}, Lon: {float(lon):.4f}'))
+            marker.add_to(m)
     
     # Add grid information as data attributes and simpler click handling
     lat_values = [float(lat) for lat in lats]
     lon_values = [float(lon) for lon in lons]
     
-    # Add custom JavaScript to handle clicks
+    # Add click handlers directly to each marker using Folium's built-in onclick
     click_script = f"""
     <script>
-    // Wait for page to load
-    document.addEventListener('DOMContentLoaded', function() {{
-        console.log('Setting up map click handler');
-        var mapObj = window['{m.get_name()}'];
-        var gridLats = {lat_values};
-        var gridLons = {lon_values};
+    var gridLats = {lat_values};
+    var gridLons = {lon_values};
+    
+    // Function to handle grid point clicks
+    function handleGridClick(lat, lon) {{
+        console.log('Grid point clicked:', lat, lon);
         
-        if (!mapObj) {{
-            console.error('Map object not found: {m.get_name()}');
-            return;
-        }}
-        
-        // Function to find nearest grid point
-        function findNearestGridPoint(clickLat, clickLon) {{
-            let minDist = Infinity;
-            let nearestLat = clickLat;
-            let nearestLon = clickLon;
-            
-            for (let lat of gridLats) {{
-                for (let lon of gridLons) {{
-                    let dist = Math.sqrt(Math.pow(lat - clickLat, 2) + Math.pow(lon - clickLon, 2));
-                    if (dist < minDist) {{
-                        minDist = dist;
-                        nearestLat = lat;
-                        nearestLon = lon;
-                    }}
-                }}
-            }}
-            return {{lat: nearestLat, lon: nearestLon}};
-        }}
-        
-        mapObj.on('click', function(e) {{
-            console.log('Map clicked at:', e.latlng.lat, e.latlng.lng);
-            
-            const clickLat = e.latlng.lat;
-            const clickLng = e.latlng.lng;
-            
-            // Find nearest grid point
-            const nearest = findNearestGridPoint(clickLat, clickLng);
-            console.log('Nearest grid point:', nearest.lat, nearest.lon);
-            
-            // Remove previous selection markers
-            mapObj.eachLayer(function(layer) {{
-                if (layer.options && layer.options.className === 'selected-point') {{
-                    mapObj.removeLayer(layer);
-                }}
-            }});
-            
-            // Add selection marker at nearest grid point
-            L.circleMarker([nearest.lat, nearest.lon], {{
-                radius: 12,
-                color: 'red',
-                fillColor: 'yellow',
-                fillOpacity: 0.9,
-                weight: 3,
-                className: 'selected-point'
-            }}).addTo(mapObj)
-              .bindPopup('Selected Grid Point<br>Lat: ' + nearest.lat.toFixed(4) + '<br>Lon: ' + nearest.lon.toFixed(4))
-              .openPopup();
-            
-            console.log('Sending request to /get_timeseries');
-            
-            // Send coordinates to Flask app
-            fetch('/get_timeseries', {{
-                method: 'POST',
-                headers: {{
-                    'Content-Type': 'application/json',
-                }},
-                body: JSON.stringify({{lat: nearest.lat, lon: nearest.lon}})
-            }})
-            .then(response => {{
-                console.log('Got response:', response);
-                return response.json();
-            }})
-            .then(data => {{
-                console.log('Time series data:', data);
-                if (data.success && data.charts) {{
-                    if (typeof window.updateCharts === 'function') {{
-                        console.log('Calling updateCharts');
-                        window.updateCharts(data.charts);
-                    }} else {{
-                        console.error('updateCharts function not available');
-                    }}
-                    // Update selected coordinates display
-                    const coordsEl = document.getElementById('selectedCoords');
-                    if (coordsEl) {{
-                        coordsEl.textContent = 'Selected point: ' + nearest.lat.toFixed(4) + ', ' + nearest.lon.toFixed(4);
-                    }}
+        // Send coordinates to Flask app
+        fetch('/get_timeseries', {{
+            method: 'POST',
+            headers: {{
+                'Content-Type': 'application/json',
+            }},
+            body: JSON.stringify({{lat: lat, lon: lon}})
+        }})
+        .then(response => response.json())
+        .then(data => {{
+            console.log('Time series response:', data);
+            if (data.success && data.charts) {{
+                if (typeof window.updateCharts === 'function') {{
+                    window.updateCharts(data.charts);
                 }} else {{
-                    console.error('Time series error:', data.error || 'No charts returned');
-                    alert('Error generating time series: ' + (data.error || 'No charts returned'));
+                    console.error('updateCharts function not available');
                 }}
-            }}).catch(error => {{
-                console.error('Error fetching time series:', error);
-                alert('Network error: ' + error.message);
-            }});
+                // Update selected coordinates display
+                const coordsEl = document.getElementById('selectedCoords');
+                if (coordsEl) {{
+                    coordsEl.textContent = 'Selected point: ' + lat.toFixed(4) + ', ' + lon.toFixed(4);
+                }}
+            }} else {{
+                console.error('Time series error:', data.error || 'No charts returned');
+                alert('Error: ' + (data.error || 'Unable to generate time series'));
+            }}
+        }}).catch(error => {{
+            console.error('Error fetching time series:', error);
+            alert('Network error: ' + error.message);
         }});
-        
-        console.log('Map click handler set up successfully');
-    }});
+    }}
+    
+    // Make function available globally
+    window.handleGridClick = handleGridClick;
     </script>
     """
     
