@@ -128,25 +128,81 @@ def create_coverage_map(ds):
         popup='Data Coverage Area'
     ).add_to(m)
     
-    # Add click handler for point selection
-    # Add click handler using MacroElement to properly access the map object
+    # Add clickable markers for each grid point
+    for lat in lats:
+        for lon in lons:
+            marker = folium.CircleMarker(
+                location=[float(lat), float(lon)],
+                radius=8,
+                popup=f'Grid Point<br>Lat: {float(lat):.4f}<br>Lon: {float(lon):.4f}<br>Click for time series',
+                color='blue',
+                fill=True,
+                fillColor='lightblue',
+                fillOpacity=0.8,
+                weight=2
+            )
+            marker.add_to(m)
+            
+            # Add hover tooltip
+            marker.add_child(folium.Tooltip(f'Lat: {float(lat):.4f}, Lon: {float(lon):.4f}'))
+    
+    # Add click handler for point selection with grid snapping
+    # Convert coordinate arrays to lists for JavaScript
+    lat_values = [float(lat) for lat in lats]
+    lon_values = [float(lon) for lon in lons]
+    
     click_script = f"""
     <script>
     var mapObj = {m.get_name()};
-    mapObj.on('click', function(e) {{
-        const lat = e.latlng.lat;
-        const lng = e.latlng.lng;
+    var gridLats = {lat_values};
+    var gridLons = {lon_values};
+    
+    // Function to find nearest grid point
+    function findNearestGridPoint(clickLat, clickLon) {{
+        let minDist = Infinity;
+        let nearestLat = clickLat;
+        let nearestLon = clickLon;
         
-        // Remove previous markers
+        for (let lat of gridLats) {{
+            for (let lon of gridLons) {{
+                let dist = Math.sqrt(Math.pow(lat - clickLat, 2) + Math.pow(lon - clickLon, 2));
+                if (dist < minDist) {{
+                    minDist = dist;
+                    nearestLat = lat;
+                    nearestLon = lon;
+                }}
+            }}
+        }}
+        return {{lat: nearestLat, lon: nearestLon}};
+    }}
+    
+    mapObj.on('click', function(e) {{
+        const clickLat = e.latlng.lat;
+        const clickLng = e.latlng.lng;
+        
+        // Find nearest grid point
+        const nearest = findNearestGridPoint(clickLat, clickLng);
+        
+        // Remove previous selection markers
         mapObj.eachLayer(function(layer) {{
-            if (layer instanceof L.Marker) {{
+            if (layer.options && layer.options.className === 'selected-point') {{
                 mapObj.removeLayer(layer);
             }}
         }});
         
-        // Add new marker
-        L.marker([lat, lng]).addTo(mapObj)
-            .bindPopup('Selected Point<br>Lat: ' + lat.toFixed(4) + '<br>Lon: ' + lng.toFixed(4));
+        // Add selection marker at nearest grid point
+        L.circleMarker([nearest.lat, nearest.lon], {{
+            radius: 12,
+            color: 'red',
+            fillColor: 'yellow',
+            fillOpacity: 0.9,
+            weight: 3,
+            className: 'selected-point'
+        }}).addTo(mapObj)
+          .bindPopup('Selected Grid Point<br>Lat: ' + nearest.lat.toFixed(4) + '<br>Lon: ' + nearest.lon.toFixed(4))
+          .openPopup();
+        
+        console.log('Grid point selected:', nearest.lat, nearest.lon);
         
         // Send coordinates to Flask app
         fetch('/get_timeseries', {{
@@ -154,10 +210,11 @@ def create_coverage_map(ds):
             headers: {{
                 'Content-Type': 'application/json',
             }},
-            body: JSON.stringify({{lat: lat, lon: lng}})
+            body: JSON.stringify({{lat: nearest.lat, lon: nearest.lon}})
         }})
         .then(response => response.json())
         .then(data => {{
+            console.log('Time series response:', data);
             if (data.success) {{
                 if (typeof window.updateCharts === 'function') {{
                     window.updateCharts(data.charts);
@@ -165,11 +222,15 @@ def create_coverage_map(ds):
                 // Update selected coordinates display
                 const coordsEl = document.getElementById('selectedCoords');
                 if (coordsEl) {{
-                    coordsEl.textContent = 'Selected point: ' + lat.toFixed(4) + ', ' + lng.toFixed(4);
+                    coordsEl.textContent = 'Selected point: ' + nearest.lat.toFixed(4) + ', ' + nearest.lon.toFixed(4);
                 }}
+            }} else {{
+                console.error('Time series error:', data.error);
+                alert('Error generating time series: ' + data.error);
             }}
         }}).catch(error => {{
             console.error('Error fetching time series:', error);
+            alert('Network error: ' + error.message);
         }});
     }});
     </script>
