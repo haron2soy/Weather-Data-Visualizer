@@ -6,6 +6,7 @@ import xarray as xr
 import pandas as pd
 from werkzeug.utils import secure_filename
 import folium
+from branca.element import MacroElement
 import plotly.graph_objs as go
 import plotly.utils
 
@@ -102,48 +103,57 @@ def create_coverage_map(ds):
     ).add_to(m)
     
     # Add click handler for point selection
-    click_script = """
+    # Add click handler using MacroElement to properly access the map object
+    click_script = f"""
     <script>
-    function onMapClick(e) {
+    var mapObj = {m.get_name()};
+    mapObj.on('click', function(e) {{
         const lat = e.latlng.lat;
         const lng = e.latlng.lng;
         
         // Remove previous markers
-        map.eachLayer(function(layer) {
-            if (layer instanceof L.Marker) {
-                map.removeLayer(layer);
-            }
-        });
+        mapObj.eachLayer(function(layer) {{
+            if (layer instanceof L.Marker) {{
+                mapObj.removeLayer(layer);
+            }}
+        }});
         
         // Add new marker
-        L.marker([lat, lng]).addTo(map)
+        L.marker([lat, lng]).addTo(mapObj)
             .bindPopup('Selected Point<br>Lat: ' + lat.toFixed(4) + '<br>Lon: ' + lng.toFixed(4));
         
         // Send coordinates to Flask app
-        fetch('/get_timeseries', {
+        fetch('/get_timeseries', {{
             method: 'POST',
-            headers: {
+            headers: {{
                 'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({lat: lat, lon: lng})
-        })
+            }},
+            body: JSON.stringify({{lat: lat, lon: lng}})
+        }})
         .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updateCharts(data.charts);
-            }
-        });
-    }
-    
-    // Add click event listener to map
-    setTimeout(function() {
-        if (typeof map !== 'undefined') {
-            map.on('click', onMapClick);
-        }
-    }, 1000);
+        .then(data => {{
+            if (data.success) {{
+                if (typeof window.updateCharts === 'function') {{
+                    window.updateCharts(data.charts);
+                }}
+                // Update selected coordinates display
+                const coordsEl = document.getElementById('selectedCoords');
+                if (coordsEl) {{
+                    coordsEl.textContent = 'Selected point: ' + lat.toFixed(4) + ', ' + lng.toFixed(4);
+                }}
+            }}
+        }}).catch(error => {{
+            console.error('Error fetching time series:', error);
+        }});
+    }});
     </script>
     """
-    # Add click functionality using HTML template injection\n    map_html = m._repr_html_()\n    # Note: Click functionality will be handled by frontend JavaScript
+    
+    # Create MacroElement to inject the script
+    from branca.element import Template
+    macro = MacroElement()
+    macro._template = Template(click_script)
+    m.get_root().add_child(macro)
     
     return m
 
