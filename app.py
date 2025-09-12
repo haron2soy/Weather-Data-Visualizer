@@ -28,6 +28,24 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() == 'nc'
 
 
+def convert_numpy_types(obj):
+    """Recursively convert numpy types to Python native types for JSON serialization"""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_types(item) for item in obj)
+    else:
+        return obj
+
+
 def extract_netcdf_info(filepath):
     """Extract basic information from NetCDF file"""
     try:
@@ -46,16 +64,24 @@ def extract_netcdf_info(filepath):
         # Get variable information
         variables = {}
         for var in ds.data_vars:
+            # Convert attributes to ensure JSON serializable
+            attrs = dict(ds[var].attrs) if hasattr(ds[var], 'attrs') else {}
+            safe_attrs = convert_numpy_types(attrs)
+            
             variables[var] = {
                 'dims': list(ds[var].dims),
                 'shape': [int(x) for x in ds[var].shape],
-                'attrs': dict(ds[var].attrs) if hasattr(ds[var], 'attrs') else {}
+                'attrs': safe_attrs
             }
+        
+        # Convert global attributes to ensure JSON serializable
+        global_attrs = dict(ds.attrs) if hasattr(ds, 'attrs') else {}
+        safe_global_attrs = convert_numpy_types(global_attrs)
         
         return {
             'coords': coords,
             'variables': variables,
-            'global_attrs': dict(ds.attrs) if hasattr(ds, 'attrs') else {},
+            'global_attrs': safe_global_attrs,
             'success': True
         }
     except Exception as e:
