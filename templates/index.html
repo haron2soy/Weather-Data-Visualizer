@@ -98,8 +98,10 @@
                         <div class="card-header">
                             <h3>Selected Grid Point</h3>
                         </div>
-                        <div class="card-body">
-                            <p id="selectedCoords" class="text-muted">Click on a blue marker on the map to select coordinates and generate time series</p>
+                        <div class="card-body" id="selectedCoords">
+                            <p class="text-muted">
+                                Click on a blue marker on the map to select coordinates and generate time series
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -247,6 +249,26 @@
 
         // Global function for map click handling (called from Flask-generated map)
         window.updateCharts = updateCharts;
+
+
+        function handleGridClick(lat, lon) {
+            console.log("Clicked grid point:", lat, lon);
+            fetch("/get_timeseries", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({lat: lat, lon: lon})
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log("Response:", data);
+                if (data.success && data.charts) {
+                    updateCharts(data.charts);  // must exist on parent page
+                } else {
+                    alert("Error: " + (data.error || "No data"));
+                }
+            })
+            .catch(err => alert("Network error: " + err.message));
+        }
     </script>
 </body>
 </html>

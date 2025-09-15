@@ -138,7 +138,7 @@ def create_coverage_map(ds):
                 location=[lat_val, lon_val],
                 radius=8,
                 popup=folium.Popup(
-                    f'''<div onclick="handleGridClick({lat_val}, {lon_val})" style="cursor: pointer;">
+                    f'''<div onclick="window.parent.handleGridClick({lat_val}, {lon_val})" style="cursor: pointer;">
                     <b>Grid Point</b><br>
                     Lat: {lat_val:.4f}<br>
                     Lon: {lon_val:.4f}<br>
@@ -168,7 +168,14 @@ def create_coverage_map(ds):
     
     // Function to handle grid point clicks
     function handleGridClick(lat, lon) {{
-        console.log('Grid point clicked:', lat, lon);
+        
+        
+        //Update the placeholder immediately
+        const coordsEl = window.parent.document.getElementById("selectedCoords");
+        
+        if (coordsEl) {
+            coordsEl.textContent = "You clicked Lat: " + lat.toFixed(4) + ", Lon: " + lon.toFixed(4);
+        }
         
         // Send coordinates to Flask app
         fetch('/get_timeseries', {{
