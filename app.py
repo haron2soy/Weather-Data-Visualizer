@@ -173,9 +173,9 @@ def create_coverage_map(ds):
         //Update the placeholder immediately
         const coordsEl = window.parent.document.getElementById("selectedCoords");
         
-        if (coordsEl) {
+        if (coordsEl) {{
             coordsEl.textContent = "You clicked Lat: " + lat.toFixed(4) + ", Lon: " + lon.toFixed(4);
-        }
+        }}
         
         // Send coordinates to Flask app
         fetch('/get_timeseries', {{
