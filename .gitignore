@@ -1,0 +1,9 @@
+.venv
+*.lock
+__pycache__/
+*.pyc
+instance/
+.local/
+pytest_cache/
+uploads/
+.replit/
