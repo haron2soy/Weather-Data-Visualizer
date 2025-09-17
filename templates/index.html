@@ -10,11 +10,12 @@
         .drop-zone {
             border: 2px dashed #007bff;
             border-radius: 10px;
-            padding: 40px;
+            padding: 4px;
             text-align: center;
+            width: 20%;
             cursor: pointer;
             transition: background-color 0.3s ease;
-            margin: 20px 0;
+            margin: 2px 0;
         }
         .drop-zone:hover {
             background-color: #f8f9fa;
@@ -31,9 +32,11 @@
         }
         .chart-container {
             margin: 20px 0;
-            padding: 15px;
+            /*padding: 15px;*/
+            height: 300px;
             border: 1px solid #ddd;
             border-radius: 8px;
+            
         }
         #loading {
             display: none;
@@ -79,7 +82,7 @@
                     <div id="fileDetails"></div>
                 </div>
                 
-                <!-- Map Section -->
+                <!-- Map Section 
                 <div id="mapSection" style="display: none;">
                     <div class="card">
                         <div class="card-header">
@@ -90,59 +93,104 @@
                             <div id="mapContainer" class="map-container"></div>
                         </div>
                     </div>
+                </div> -->
+                <!-- Map + Charts Side by Side -->
+                <div id="visualizationSection" style="display: none;">
+                <div class="row">
+                    <!-- Map Column -->
+                    <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                        <h3>Data Coverage Map</h3>
+                        <p class="mb-0">Click on the map to select a point </p>
+                        </div>
+                        <div class="card-body">
+                        <div id="mapContainer" class="map-container" style="height: 100%;">{{ map_html|safe }}</div>
+                        
+                    
+                    </div>
+                    </div>
+                    </div>
+
+                    <!-- Charts Column -->
+                    <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                        <h3>Time Series Data</h3>
+                        <p id="selectedCoords" class="mb-0 text-muted"></p>
+                        </div>
+                        <div class="card-body">
+                        <div id="chartsContainer"></div>
+                        </div>
+                    </div>
+                    </div>
                 </div>
-                
+                </div>
+
                 <!-- Selected Coordinates Display -->
                 <div id="gridSection" style="display: none;">
                     <div class="card">
-                        <div class="card-header">
+                        <!--<div class="card-header">
                             <h3>Selected Grid Point</h3>
                         </div>
-                        <div class="card-body" id="selectedCoords">
+                        <div class="card-body">
                             <p class="text-muted">
                                 Click on a blue marker on the map to select coordinates and generate time series
                             </p>
-                        </div>
+                        </div>-->
                     </div>
                 </div>
 
-                <!-- Charts Section -->
+                <!-- Charts Section 
                 <div id="chartsSection" style="display: none;">
                     <div class="card">
                         <div class="card-header">
                             <h3>Time Series Data</h3>
-                            <p id="selectedCoords" class="mb-0 text-muted"></p>
+                            <p id="selectedCoords2" class="mb-0 text-muted"></p>
                         </div>
                         <div class="card-body">
                             <div id="chartsContainer"></div>
                         </div>
                     </div>
-                </div>
+                </div>-->
             </div>
         </div>
     </div>
+<div class="card mt-3">
+  <div class="card-header">
+    <h3>Select Time Range</h3>
+  </div>
+  <div class="card-body">
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate" class="form-control mb-2">
+
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate" class="form-control mb-2">
+
+    <button class="btn btn-primary" onclick="applyDateRange()">Apply</button>
+  </div>
+</div>
 
     <script>
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const loading = document.getElementById('loading');
         const fileInfo = document.getElementById('fileInfo');
-        const mapSection = document.getElementById('mapSection');
+        const visualizationSection = document.getElementById('visualizationSection'); // combined section
         const gridSection = document.getElementById('gridSection');
-        const chartsSection = document.getElementById('chartsSection');
 
         // Drag and drop functionality
         dropZone.addEventListener('click', () => fileInput.click());
-        
+
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             dropZone.classList.add('dragover');
         });
-        
+
         dropZone.addEventListener('dragleave', () => {
             dropZone.classList.remove('dragover');
         });
-        
+
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
@@ -151,7 +199,7 @@
                 handleFileUpload(files[0]);
             }
         });
-        
+
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFileUpload(e.target.files[0]);
@@ -159,8 +207,9 @@
         });
 
         function handleFileUpload(file) {
-            if (!file.name.toLowerCase().endsWith('.nc')) {
-                alert('Please select a NetCDF (.nc) file');
+            const filename = file.name.toLowerCase();
+            if (!filename.endsWith('.nc') && !filename.endsWith('.grib') && !filename.endsWith('.grb')) {
+                alert('Please select a NetCDF (.nc) or GRIB (.grib/.grb) file');
                 return;
             }
 
@@ -169,9 +218,8 @@
 
             loading.style.display = 'block';
             fileInfo.style.display = 'none';
-            mapSection.style.display = 'none';
+            visualizationSection.style.display = 'none';
             gridSection.style.display = 'none';
-            chartsSection.style.display = 'none';
 
             fetch('/upload', {
                 method: 'POST',
@@ -180,13 +228,12 @@
             .then(response => response.json())
             .then(data => {
                 loading.style.display = 'none';
-                
+
                 if (data.success) {
                     displayFileInfo(data.info);
                     if (data.map_html) {
                         displayMap(data.map_html);
                     }
-                    // Show the grid selection section to indicate map clicking is available
                     gridSection.style.display = 'block';
                 } else {
                     alert('Error: ' + data.error);
@@ -201,22 +248,18 @@
         function displayFileInfo(info) {
             let html = '<div class="row">';
             html += '<div class="col-md-6">';
-            html += '<h5>Coordinates</h5>';
-            html += '<ul>';
+            html += '<h5>Coordinates</h5><ul>';
             for (const [coord, details] of Object.entries(info.coords)) {
                 html += `<li><strong>${coord}:</strong> ${details.min.toFixed(4)} to ${details.max.toFixed(4)} (${details.size} points)</li>`;
             }
-            html += '</ul>';
-            html += '</div>';
+            html += '</ul></div>';
+
             html += '<div class="col-md-6">';
-            html += '<h5>Variables</h5>';
-            html += '<ul>';
+            html += '<h5>Variables</h5><ul>';
             for (const [varName, details] of Object.entries(info.variables)) {
                 html += `<li><strong>${varName}:</strong> ${details.dims.join(' x ')} (${details.shape.join(' x ')})</li>`;
             }
-            html += '</ul>';
-            html += '</div>';
-            html += '</div>';
+            html += '</ul></div></div>';
 
             document.getElementById('fileDetails').innerHTML = html;
             fileInfo.style.display = 'block';
@@ -224,51 +267,35 @@
 
         function displayMap(mapHtml) {
             document.getElementById('mapContainer').innerHTML = mapHtml;
-            mapSection.style.display = 'block';
+
+            // update grid arrays dynamically from backend response if needed
+            console.log("Map loaded. Points clickable via folium markers.");
+
+            visualizationSection.style.display = 'flex';
         }
+
 
         function updateCharts(charts) {
             const container = document.getElementById('chartsContainer');
             container.innerHTML = '';
-            
+
             let chartCount = 0;
             for (const [varName, chartData] of Object.entries(charts)) {
                 const chartDiv = document.createElement('div');
                 chartDiv.id = `chart-${chartCount}`;
                 chartDiv.className = 'chart-container';
                 container.appendChild(chartDiv);
-                
+
                 Plotly.newPlot(chartDiv.id, chartData.data, chartData.layout);
                 chartCount++;
             }
-            
-            // Show the charts section
-            chartsSection.style.display = 'block';
+
+            visualizationSection.style.display = 'flex'; // ensure section is visible
         }
 
-
-        // Global function for map click handling (called from Flask-generated map)
+        // Global function for map click handling
         window.updateCharts = updateCharts;
-
-
-        function handleGridClick(lat, lon) {
-            console.log("Clicked grid point:", lat, lon);
-            fetch("/get_timeseries", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({lat: lat, lon: lon})
-            })
-            .then(res => res.json())
-            .then(data => {
-                console.log("Response:", data);
-                if (data.success && data.charts) {
-                    updateCharts(data.charts);  // must exist on parent page
-                } else {
-                    alert("Error: " + (data.error || "No data"));
-                }
-            })
-            .catch(err => alert("Network error: " + err.message));
-        }
     </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
