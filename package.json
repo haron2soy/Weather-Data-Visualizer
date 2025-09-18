@@ -1,0 +1,23 @@
+{
+  "name": "weather-data-visualizer",
+  "version": "1.0.0",
+  "description": "This is a Flask-based web application designed to visualize weather and climate data from NetCDF files. The application allows users to upload NetCDF files through a drag-and-drop interface and provides interactive visualizations including maps, charts, and time series analysis. The tool is built to handle large climate datasets (up to 100MB) and extract coordinate and variable information for comprehensive data exploration.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haron2soy/Weather-Data-Visualizer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/haron2soy/Weather-Data-Visualizer/issues"
+  },
+  "homepage": "https://github.com/haron2soy/Weather-Data-Visualizer#readme",
+  "devDependencies": {
+    "tailwindcss": "^4.1.13"
+  }
+}
