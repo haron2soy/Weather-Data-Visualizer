@@ -177,14 +177,79 @@ def create_coverage_map(ds):
                     }});
                 }}
             }});
+            // Attach to map background (anywhere else)
+            {map_name}.on('click', function(e) {{
+                console.log("2ignore Map clicked at", e.latlng); // logs to browser console
+            }});
+
         }} else {{
             console.error("Map variable {map_name} not defined yet");
         }}
     }});
     """
+    # Assuming you already have your lat/lon arrays
+    lat_vals = np.array(lats)   # 1D array
+    lon_vals = np.array(lons)   # 1D array
 
+
+    # Estimate average grid spacing
+    dlat = np.mean(np.diff(lat_vals))
+    dlon = np.mean(np.diff(lon_vals))
+
+    # Use half the diagonal of grid cell as cutoff
+
+    latlon_threshold = np.sqrt((dlat/2)**2 + (dlon/2)**2)
+    # Convert to JavaScript arrays
+    lat_js = "[" + ",".join(map(str, lat_vals)) + "]"
+    lon_js = "[" + ",".join(map(str, lon_vals)) + "]"
+
+    snap_click_script = f"""
+    <script>
+    
+    window.addEventListener("load", function() {{
+        if (typeof {m.get_name()} !== "undefined") {{
+            var lat_vals = {lat_js};
+            var lon_vals = {lon_js};
+
+            function findClosest(arr, val) {{
+                return arr.reduce(function(prev, curr) {{
+                    return (Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev);
+                }});
+            }}
+
+            {m.get_name()}.on('click', function(e) {{
+            
+                var clickLat = e.latlng.lat;
+                var clickLon = e.latlng.lng;
+                console.log(" far away: ")
+                var click_position = Math.sqrt(clickLat**2 + clickLon**2)
+                var LatLon_threshold = {latlon_threshold};
+                console.log("1Hey dear you clicked far away: ", clickLat, clickLon, click_position, LatLon_threshold)
+                
+                if (clickLat >= LatLon_threshold){{
+                console.log("2Hey dear you clicked far away: ", clickLat, clickLon, LatLon_threshold)
+                }}
+
+                var nearestLat = findClosest(lat_vals, clickLat);
+                var nearestLon = findClosest(lon_vals, clickLon);
+
+                console.log("Clicked:", clickLat.toFixed(4), clickLon.toFixed(4));
+                console.log("Snapped to:", nearestLat.toFixed(4), nearestLon.toFixed(4));
+
+                if (window.parent && typeof window.parent.handleGridClick === 'function') {{
+                    window.parent.handleGridClick(nearestLat, nearestLon);
+                }}
+            }});
+        }} else {{
+            console.error("Map variable {m.get_name()} not defined yet");
+        }}
+    }});
+    </script>
+    """
+
+    m.get_root().html.add_child(folium.Element(snap_click_script))
     m.get_root().html.add_child(folium.Element(f"<script>{click_script}</script>"))
-
+    
 
 
     return m

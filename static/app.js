@@ -1,3 +1,4 @@
+
 // static/app.js
 window.currentTimeseries = {}; 
 window.selectedLat = null;
