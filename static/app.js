@@ -18,6 +18,26 @@ function handleGridClick(lat, lon) {
         }
     }
 
+        // Show download button and set click handler
+        const startDate = document.getElementById("startDate").value;
+        const endDate   = document.getElementById("endDate").value;
+
+        const csvBtn = document.getElementById("downloadCsvBtn");
+        csvBtn.style.display = "inline-block";
+        csvBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "csv");
+
+        const docxBtn = document.getElementById("downloadDocxBtn");
+        docxBtn.style.display = "inline-block";
+        docxBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "docx");
+        
+       /* btn.onclick = () => {
+            const startDate = document.getElementById("startDate").value;
+            const endDate   = document.getElementById("endDate").value;
+            downloadCSV(lat, lon, startDate, endDate);
+        };*/
+       
+
+
     window.selectedLat = lat;
     window.selectedLon = lon;
     
@@ -188,6 +208,30 @@ function enableSnapClick() {
             }
         });
     });
+}
+
+function downloadFile(lat, lon, startDate, endDate, filetype) {
+    //const url = `/download?lat=${lat}&lon=${lon}&start=${startDate}&end=${endDate}&format=${filetype}`;
+  fetch("/download_timeseries_csv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lat, lon, startDate, endDate })
+  })
+  .then(response => {
+    if (!response.ok) throw new Error("Download failed");
+    return response.blob();
+  })
+  .then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    //a.download = "timeseries.csv";
+    a.download = filetype === "csv" ? "timeseries.csv" : "timeseries.docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  })
+  .catch(err => console.error(err));
 }
 
 /*

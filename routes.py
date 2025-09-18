@@ -1,5 +1,7 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, send_file
 import os
+import io
+from docx import Document
 import xarray as xr
 import numpy as np
 import json
@@ -138,11 +140,15 @@ def create_coverage_map(ds):
     m.get_root().add_child(folium.Element(bounds_script))
 
     # Rectangle showing full dataset bounds (optional)
-    bounds = [[float(np.min(lats)), float(np.min(lons))],
-              [float(np.max(lats)), float(np.max(lons))]]
+    bounds = [[float(np.min(lats))-0.5, float(np.min(lons))-0.5],
+              [float(np.max(lats))+0.5, float(np.max(lons))+0.5]]
+    
+    south, west = bounds[0]
+    north, east = bounds[1]
+    
     folium.Rectangle(
         bounds=bounds,
-        color=None,
+        color= "red",
         fill=False,
         fillOpacity=0.0,
         popup='Data Coverage Area'
@@ -153,12 +159,12 @@ def create_coverage_map(ds):
         for lon in lons:
             folium.CircleMarker(
                 location=[float(lat), float(lon)],
-                radius=8,
-                color="blue",
+                radius=2,
+                color=None,
                 fill=True,
-                fill_color="lightblue",
-                fill_opacity=0.8,
-                weight=2,
+                fill_color=None,
+                fill_opacity=0,
+                weight=0.5,
                 tooltip=f"Click: Lat {lat:.4f}, Lon: {lon:.4f}",
             ).add_to(m)
 
@@ -178,9 +184,7 @@ def create_coverage_map(ds):
                 }}
             }});
             // Attach to map background (anywhere else)
-            {map_name}.on('click', function(e) {{
-                console.log("2ignore Map clicked at", e.latlng); // logs to browser console
-            }});
+
 
         }} else {{
             console.error("Map variable {map_name} not defined yet");
@@ -219,18 +223,12 @@ def create_coverage_map(ds):
 
             {m.get_name()}.on('click', function(e) {{
             
-                var clickLat = e.latlng.lat;
-                var clickLon = e.latlng.lng;
-                console.log(" far away: ")
-                var click_position = Math.sqrt(clickLat**2 + clickLon**2)
-                var LatLon_threshold = {latlon_threshold};
-                console.log("1Hey dear you clicked far away: ", clickLat, clickLon, click_position, LatLon_threshold)
+                clickLat = e.latlng.lat;
+                clickLon = e.latlng.lng;
                 
-                if (clickLat >= LatLon_threshold){{
-                console.log("2Hey dear you clicked far away: ", clickLat, clickLon, LatLon_threshold)
-                }}
-
-                var nearestLat = findClosest(lat_vals, clickLat);
+                if (clickLat >= {south} && clickLat <= {north} && clickLon >= {west} && clickLon <= {east}) {{
+                    console.log("55Clicked inside rectangle at", e.latlng);
+                    var nearestLat = findClosest(lat_vals, clickLat);
                 var nearestLon = findClosest(lon_vals, clickLon);
 
                 console.log("Clicked:", clickLat.toFixed(4), clickLon.toFixed(4));
@@ -239,6 +237,12 @@ def create_coverage_map(ds):
                 if (window.parent && typeof window.parent.handleGridClick === 'function') {{
                     window.parent.handleGridClick(nearestLat, nearestLon);
                 }}
+                }} else {{
+                    console.log("You clicked outside the rectangle");
+                    
+                }}
+
+                
             }});
         }} else {{
             console.error("Map variable {m.get_name()} not defined yet");
@@ -430,6 +434,110 @@ def get_timeseries():
         }
     })
 
+
+
+@bp.route("/download_timeseries_csv", methods=["POST"])
+def download_timeseries_csv():
+    ds = current_dataset.get("ds")
+    if ds is None:
+        return "No dataset loaded", 400
+
+    data = request.get_json()
+    lat, lon = data.get("lat"), data.get("lon")
+    start = pd.to_datetime(data.get("startDate")) if data.get("startDate") else None
+    end   = pd.to_datetime(data.get("endDate")) if data.get("endDate") else None
+    filetype = data.get("filetype", "csv")  # default to CSV if not provided
+
+    # --- Detect coordinates ---
+    lat_var = lon_var = time_var = None
+    for coord in ds.coords:
+        c = str(coord).lower()
+        if "lat" in c: lat_var = coord
+        elif "lon" in c: lon_var = coord
+        elif "time" in c or "date" in c: time_var = coord
+
+    if not lat_var or not lon_var:
+        return "Lat/Lon not found in dataset", 400
+
+    # --- Slice time range if provided ---
+    if time_var and start is not None and end is not None:
+        ds = ds.sel({time_var: slice(start, end)})
+        if ds[time_var].size == 0:
+            return "No data in selected date range", 400
+
+    # --- Select nearest grid point ---
+    point = ds.sel({lat_var: lat, lon_var: lon}, method="nearest")
+
+    # Convert to DataFrame
+    df = point.to_dataframe().reset_index()
+
+    # --- Handle units (Kelvin → Celsius as example) ---
+    for var_name in point.data_vars:
+        units = point[var_name].attrs.get("units", "").lower()
+        if "k" in units:
+            df[var_name] = df[var_name] - 273.15
+            point[var_name].attrs["units"] = "C"
+
+    # ==============================
+    # 📤 EXPORT SECTION (moved out)
+    # ==============================
+
+    if filetype == "csv":
+        buf = io.StringIO()
+        df.to_csv(buf, index=False)
+        buf.seek(0)
+        return send_file(
+            io.BytesIO(buf.getvalue().encode("utf-8")),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name="timeseries.csv",
+        )
+
+
+
+    # inside your route
+    elif filetype == "docx":
+        # 1) Export DataFrame to CSV string
+        csv_buf = io.StringIO()
+        df.to_csv(csv_buf, index=False)
+        csv_buf.seek(0)
+
+        # 2) Create Word doc
+        doc = Document()
+        doc.add_heading("Time Series Data", 0)
+        doc.add_paragraph(f"Grid Point: Lat {lat:.4f}, Lon {lon:.4f}")
+        if start and end:
+            doc.add_paragraph(f"Date Range: {start.date()} → {end.date()}")
+
+        # 3) Convert CSV string → table
+        lines = csv_buf.getvalue().splitlines()
+        headers = lines[0].split(",")
+
+        table = doc.add_table(rows=1, cols=len(headers))
+        hdr_cells = table.rows[0].cells
+        for i, h in enumerate(headers):
+            hdr_cells[i].text = h
+
+        for line in lines[1:]:
+            row_cells = table.add_row().cells
+            for i, val in enumerate(line.split(",")):
+                row_cells[i].text = val
+
+        # 4) Save Word doc to BytesIO
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name="timeseries.docx",
+        )
+
+
+    else:
+        return "Unsupported filetype", 400
 
 
 

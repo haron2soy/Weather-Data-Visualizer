@@ -173,11 +173,16 @@
                                     <h3>Data Coverage Map</h3>
                                     <p class="mb-0">Click on the map to select a point </p>
                                 </div>
-                                <div class="card-body">
-                                    <div id="mapContainer" class="map-container" style="height: 100%;">{{ map_html|safe }}</div>
-                                
-                            
+                                <div class="card-body d-flex flex-column">
+                                    <div id="mapContainer" class="map-container" class="flex-grow-1" style="height: 100%;"></div>
+                                    <button id="downloadCsvBtn" class="btn btn-success mt-2" style="display:none;">
+                                        <i class="fas fa-download"></i> Download CSV
+                                    </button>
+                                    <button id="downloadDocxBtn" class="btn btn-primary mt-2" style="display:none;">
+                                        <i class="fas fa-file-word"></i> Download DOCX
+                                    </button>
                                 </div>
+
                             </div>
                         </div>
 
