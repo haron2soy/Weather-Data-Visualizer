@@ -165,8 +165,8 @@ def create_coverage_map(ds):
             folium.CircleMarker(
                 location=[float(lat), float(lon)],
 
-                radius=2,
-                color="blue",
+                radius=1,
+                color=None,
                 fill=False,
                 fill_color=None,
                 fill_opacity=0,
@@ -397,10 +397,25 @@ def get_timeseries():
 
         # Convert Kelvin → Celsius
         units = var_data.attrs.get('units', '').lower()
-        if 'k' in units:
+
+        '''if units in ["k", "kelvin", "kelvins"]:
             var_data = var_data - 273.15
             var_data.attrs['units'] = 'C'
             print(f"Converted {var_name} from Kelvin to Celsius")
+        
+        elif units in ["c", "degc", "celsius", "degree_celsius"]:
+            print(f"{var_name} already in Celsius, no conversion applied.")
+
+        else:
+            print(f"{var_name} has units: {units} (no conversion rule applied)")'''
+        if any(u in units for u in ["k", "kelvin", "kelvins"]):
+            # Check if all values are >= 100 (typical Kelvin range)
+            if (var_data >= 100).all():
+                var_data = var_data - 273.15
+                var_data.attrs['units'] = 'C'
+                print(f"Converted {var_name} from Kelvin to Celsius")
+            else:
+                print(f"Skipped conversion for {var_name}, values already look like Celsius")
 
         if time_var and time_var in var_data.dims:
             times = var_data[time_var].values
@@ -462,7 +477,7 @@ def download_timeseries_csv():
     lat, lon = data.get("lat"), data.get("lon")
     start = pd.to_datetime(data.get("startDate")) if data.get("startDate") else None
     end   = pd.to_datetime(data.get("endDate")) + pd.Timedelta(days=1) if data.get("endDate") else None
-    print("CHECKING END DATE", end)
+    
     filetype = data.get("filetype", "csv")  # default to CSV if not provided
     keep_constant = data.get("keep_constant", False)  # Option to keep zero-only columns
 
@@ -492,10 +507,22 @@ def download_timeseries_csv():
 
     # --- Handle units (Kelvin → Celsius as example) ---
     for var_name in point.data_vars:
+        var_data = point[var_name]
         units = point[var_name].attrs.get("units", "").lower()
-        if "k" in units:
+        '''if "k" in units:
             df[var_name] = df[var_name] - 273.15
-            point[var_name].attrs["units"] = "C"
+            point[var_name].attrs["units"] = "C"'''
+        
+        if any(u in units for u in ["k", "kelvin", "kelvins"]):
+            # Check if all values are >= 100 (typical Kelvin range)
+            if (var_data >= 100).all():
+                var_data = var_data - 273.15
+                var_data.attrs['units'] = 'C'
+                point[var_name] = var_data
+                
+                print(f"Converted {var_name} from Kelvin to Celsius")
+            else:
+                print(f"Skipped conversion for {var_name}, values already look like Celsius")
 
     # --- Filter out columns with all NaN or empty values ---
     df = df.dropna(axis=1, how="all")
