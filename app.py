@@ -1,13 +1,7 @@
 from flask import Flask, render_template, jsonify, request
-import json 
 from werkzeug.utils import secure_filename
-import xarray as xr
-import numpy as np
 import os
-import folium
-import plotly
 import plotly.graph_objs as go
-
 from routes import bp as main_bp
 
 app = Flask(__name__)

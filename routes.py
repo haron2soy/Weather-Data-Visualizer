@@ -149,7 +149,7 @@ def create_coverage_map(ds):
     folium.Rectangle(
         bounds=bounds,
         color= "red",
-        fill=False,
+       fill=False,
         fillOpacity=0.0,
         popup='Data Coverage Area'
     ).add_to(m)
@@ -161,8 +161,8 @@ def create_coverage_map(ds):
                 location=[float(lat), float(lon)],
 
                 radius=2,
-                color=None,
-                fill=True,
+                color="blue",
+                fill=False,
                 fill_color=None,
                 fill_opacity=0,
                 weight=0.5,
