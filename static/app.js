@@ -24,8 +24,12 @@ function handleGridClick(lat, lon) {
 
         const csvBtn = document.getElementById("downloadCsvBtn");
         csvBtn.style.display = "inline-block";
-        csvBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "csv");
+        csvBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "xlsx");
 
+        const txtBtn = document.getElementById("downloadTxtBtn");
+        txtBtn.style.display = "inline-block";
+        txtBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "txt");
+        
         const docxBtn = document.getElementById("downloadDocxBtn");
         docxBtn.style.display = "inline-block";
         docxBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "docx");
@@ -215,7 +219,7 @@ function downloadFile(lat, lon, startDate, endDate, filetype) {
   fetch("/download_timeseries_csv", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lat, lon, startDate, endDate })
+    body: JSON.stringify({ lat, lon, startDate, endDate, filetype })
   })
   .then(response => {
     if (!response.ok) throw new Error("Download failed");
@@ -226,7 +230,13 @@ function downloadFile(lat, lon, startDate, endDate, filetype) {
     const a = document.createElement("a");
     a.href = url;
     //a.download = "timeseries.csv";
-    a.download = filetype === "csv" ? "timeseries.csv" : "timeseries.docx";
+    const extensions = {
+        csv: "timeseries.xlsx",
+        txt: "timeseries.txt",
+        docx: "timeseries.docx",
+        };
+
+    a.download = extensions[filetype] || "timeseries.xlsx";
     document.body.appendChild(a);
     a.click();
     a.remove();

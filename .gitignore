@@ -1,14 +1,46 @@
-.venv
-*.lock
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Python cache and compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.pyd.*
+
+# Package/environment files
+*.lock
+Pipfile.lock
+poetry.lock
+
+# Flask instance/temporary dirs
 instance/
+uploads/
+*.sqlite3
+*.db
+
+# Logs
+*.log
+
+# Local dev tools
 .local/
 pytest_cache/
-uploads/
-.replit/
-node_modules/
+.coverage
+htmlcov/
+
+# Editor/project files
 .DS_Store
 .vscode/
-*.sqlite3
-*.log
+.replit/
+.idea/
+
+# Node.js (if frontend is bundled)
+node_modules/
+dist/
+build/
+
+# Misc
+*.bak
+*.swp
