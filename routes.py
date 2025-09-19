@@ -164,10 +164,9 @@ def create_coverage_map(ds):
         for lon in lons:
             folium.CircleMarker(
                 location=[float(lat), float(lon)],
-
-                radius=1,
+                radius=2,
                 color=None,
-                fill=False,
+                fill=True,
                 fill_color=None,
                 fill_opacity=0,
                 weight=0.5,
