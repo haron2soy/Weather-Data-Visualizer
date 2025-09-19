@@ -37,12 +37,16 @@ def convert_numpy_types(obj):
 # Extract NetCDF info
 def extract_file_info(filepath):
     """Extract basic info from NetCDF or GRIB file"""
+    print(f"3Extracting NetCDF info from {filepath}")
     try:
         ext = filepath.rsplit('.', 1)[1].lower()
+        print(f"4Extracting NetCDF info from {filepath}")
         if ext == 'nc':
+            print(f"5Extracting NetCDF info from {filepath}")
             with xr.open_dataset(filepath, cache=False) as ds:
                 current_dataset['ds'] = ds.load()
         elif ext in ['grib', 'grb']:
+            print(f"6Extracting NetCDF info from {filepath}")
             with xr.open_dataset(filepath, cache=False, engine='cfgrib') as ds:
                 current_dataset['ds'] = ds.load()
         else:
@@ -539,77 +543,3 @@ def download_timeseries_csv():
     else:
         return "Unsupported filetype", 400
 
-
-
-'''@bp.route('/get_timeseries', methods=['POST'])
-def get_timeseries():
-    ds = current_dataset.get('ds')
-    if ds is None:
-        return jsonify({'success': False, 'error': 'No dataset loaded'})
-
-    data = request.get_json()
-    
-    lat, lon = data.get('lat'), data.get('lon')
-    if lat is None or lon is None:
-        return jsonify({'success': False, 'error': 'Coordinates not provided'})
-
-    try:
-        lat_var = lon_var = time_var = None
-        for coord in ds.coords:
-            c = str(coord).lower()
-            if 'lat' in c: lat_var = coord
-            elif 'lon' in c: lon_var = coord
-            elif 'time' in c: time_var = coord
-
-        if not lat_var or not lon_var:
-            return jsonify({'success': False, 'error': 'Lat/Lon not found'})
-
-        point = ds.sel({lat_var: lat, lon_var: lon}, method='nearest')
-        charts = {}
-
-        for var_name in ds.data_vars:
-            var_data = point[var_name]
-            print("variable name is: ", var_name)
-            # skip this variable
-            if var_data.size == 0 or var_data.isnull().all():
-                print(f"Skipping {var_name} (empty or all NaN)")
-                continue
-            # Convert Kelvin to Celsius if units attribute exists
-            units = var_data.attrs.get('units', '').lower()
-            if 'k' in units:  # likely Kelvin
-                var_data = var_data - 273.15
-                var_data.attrs['units'] = 'C'
-                print(f"Converted {var_name} from Kelvin to Celsius")
-
-            if time_var and time_var in var_data.dims:
-                times = var_data[time_var].values
-                values = var_data.values
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(\
-                    x=times,
-                    y=values, 
-                    mode='lines+markers', 
-                    name=var_name,
-                    line=dict(color='blue', width=1, dash='solid'),   # line style
-                    marker=dict(symbol='circle', size=2, color='blue')  # marker style
-                ))
-
-                # Customize layout
-                fig.update_layout(
-                    title=f"Time Series of {var_name}",
-                    xaxis_title='Time',
-                    yaxis_title=var_data.attrs.get('units', 'Value'),
-                    template='plotly',  # other options: 'plotly_dark', 'ggplot2', 'seaborn', etc.
-                    legend=dict(x=0.01, y=0.99)
-                )
-
-                # Optionally set y-axis range, etc.
-                #fig.update_yaxes(rangemode='tozero')  # starts y-axis at 0
-                    
-                charts[var_name] = json.loads(plotly.utils.PlotlyJSONEncoder().encode(fig))
-
-        return jsonify({'success': True, 'charts': charts,
-                        'coordinates': {'lat': float(point[lat_var].values),
-                                        'lon': float(point[lon_var].values)}})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})'''
