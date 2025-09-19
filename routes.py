@@ -1,7 +1,9 @@
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, render_template, request, jsonify, send_file, Response
 import os
-import io
 from docx import Document
+from docx.shared import Inches
+import io
+import logging
 import xarray as xr
 import numpy as np
 import json
@@ -9,6 +11,9 @@ import plotly.graph_objs as go
 import plotly.utils
 import pandas as pd
 import folium
+from openpyxl import Workbook
+from openpyxl.styles import NamedStyle, Font
+import re
 from werkzeug.utils import secure_filename
 
 bp = Blueprint('main', __name__)
@@ -363,9 +368,12 @@ def get_timeseries():
                 start = start.tz_convert(None)
             if end.tzinfo is not None:
                 end = end.tz_convert(None)
-
+  
         ds = ds.sel({time_var: slice(start, end)})
-        print(f"Sliced dataset from {start} to {end} using '{time_var}'")
+        
+        #ds = ds.sel({time_var: (ds[time_var] >= np.datetime64(start)) &
+                               #(ds[time_var] <= np.datetime64(end))})
+        print(f"Sliced dataset from {start} to end {end} using '{time_var}'")
 
         if ds[time_var].size == 0:
             return jsonify({'success': False, 'error': 'No data in selected date range'})
@@ -435,7 +443,14 @@ def get_timeseries():
         }
     })
 
-
+def sanitize_text(text):
+    """Sanitize text to remove non-printable characters and ensure Word compatibility."""
+    if text is None or pd.isna(text):
+        return "NaN"
+    text = str(text)
+    # Remove non-printable characters (keep ASCII printable and common Unicode)
+    text = re.sub(r'[^\x20-\x7E\u00A0-\uFFFF]', '', text)
+    return text
 
 @bp.route("/download_timeseries_csv", methods=["POST"])
 def download_timeseries_csv():
@@ -446,8 +461,10 @@ def download_timeseries_csv():
     data = request.get_json()
     lat, lon = data.get("lat"), data.get("lon")
     start = pd.to_datetime(data.get("startDate")) if data.get("startDate") else None
-    end   = pd.to_datetime(data.get("endDate")) if data.get("endDate") else None
+    end   = pd.to_datetime(data.get("endDate")) + pd.Timedelta(days=1) if data.get("endDate") else None
+    print("CHECKING END DATE", end)
     filetype = data.get("filetype", "csv")  # default to CSV if not provided
+    keep_constant = data.get("keep_constant", False)  # Option to keep zero-only columns
 
     # --- Detect coordinates ---
     lat_var = lon_var = time_var = None
@@ -463,9 +480,10 @@ def download_timeseries_csv():
     # --- Slice time range if provided ---
     if time_var and start is not None and end is not None:
         ds = ds.sel({time_var: slice(start, end)})
+        end = end - pd.Timedelta(days=1)
         if ds[time_var].size == 0:
             return "No data in selected date range", 400
-
+    
     # --- Select nearest grid point ---
     point = ds.sel({lat_var: lat, lon_var: lon}, method="nearest")
 
@@ -479,12 +497,112 @@ def download_timeseries_csv():
             df[var_name] = df[var_name] - 273.15
             point[var_name].attrs["units"] = "C"
 
+    # --- Filter out columns with all NaN or empty values ---
+    df = df.dropna(axis=1, how="all")
+
+    # --- Track and filter constant-value columns ---
+    dropped_columns = []
+    if not keep_constant:
+        # Identify columns with a single unique value
+        for col in df.columns:
+            if df[col].nunique(dropna=False) == 1:
+                # Get the constant value (first non-NaN value, or NaN if all NaN)
+                constant_value = df[col].iloc[0] if not df[col].isna().all() else "NaN"
+                # Format as Variable_name(constant_value_it_has)
+                dropped_columns.append(f"{col}({constant_value})")
+        # Drop constant columns
+        constant_cols = [col for col in df.columns if df[col].nunique(dropna=False) == 1]
+        df = df.drop(columns=constant_cols)
+
+
+    # --- Filter out columns with all NaN or empty values ---
+    df = df.dropna(axis=1, how="all")
+    
+    # --- Filter out columns with all zeros (if keep_zeros is False) ---
+    if not keep_constant:
+            # Identify columns with a single unique value (including zeros, ones, or any constant)
+            constant_cols = [col for col in df.columns if df[col].nunique(dropna=False) == 1]
+            df = df.drop(columns=constant_cols)
+
+
     # ==============================
     # 📤 EXPORT SECTION (moved out)
     # ==============================
 
+    
     if filetype == "csv":
-        buf = io.StringIO()
+        # Generate CSV string from DataFrame
+        csv_output = df.to_csv(index=False)
+        # Prepend comment row with dropped columns (if any)
+
+        # Build metadata as comment lines (like paragraphs in DOCX)
+        header_lines = []
+        header_lines.append("# Time Series Data")
+        header_lines.append(f"# Grid Point: Lat {lat:.4f}, Lon {lon:.4f}")
+        if start and end:
+            header_lines.append(f"# Date Range: {start.date()} → {end.date()}")
+        if dropped_columns:
+            header_lines.append(f"# Dropped constant columns: {' '.join(dropped_columns)}")
+        header_lines.append("")  # blank line before CSV table
+
+        # Prepend metadata to CSV
+        csv_output = "\n".join(header_lines) + "\n" + csv_output
+        return Response(
+            csv_output,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=timeseries.csv"}
+        )
+    
+    elif filetype == "xlsx":
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+
+        # Define styles
+        title_style = NamedStyle(name="title_style")
+        title_style.font = Font(size=14, bold=True, color="1F497D")  # dark blue
+
+        heading_style = NamedStyle(name="heading_style")
+        heading_style.font = Font(size=11, bold=True, color="1F497D")
+
+        # Add metadata with styles
+        ws.append(["Time Series Data"])
+        ws["A1"].style = title_style
+
+        ws.append([f"Grid Point: Lat {lat:.4f}, Lon {lon:.4f}"])
+        ws["A2"].style = heading_style
+
+        if start and end:
+            ws.append([f"Date Range: {start.date()} → {end.date()}"])
+            ws["A3"].style = heading_style
+
+        if dropped_columns:
+            ws.append([f"Dropped constant columns: {' '.join(dropped_columns)}"])
+            ws[f"A{ws.max_row}"].style = heading_style
+
+        ws.append([])  # blank row
+
+        # Write table headers + data
+        ws.append(df.columns.tolist())
+        for row in df.itertuples(index=False, name=None):
+            ws.append(row)
+
+        # Set all columns to width 20
+        for col in ws.columns:
+            col_letter = col[0].column_letter
+            ws.column_dimensions[col_letter].width = 20
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        return send_file(
+            buf,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="timeseries.xlsx",
+        )
+        '''buf = io.StringIO()
         df.to_csv(buf, index=False)
         buf.seek(0)
         return send_file(
@@ -492,125 +610,113 @@ def download_timeseries_csv():
             mimetype="text/csv",
             as_attachment=True,
             download_name="timeseries.csv",
-        )
+        )'''
 
 
-
-    # inside your route
-    elif filetype == "docx":
-        # 1) Export DataFrame to CSV string
-        csv_buf = io.StringIO()
-        df.to_csv(csv_buf, index=False)
-        csv_buf.seek(0)
-
-        # 2) Create Word doc
-        doc = Document()
-        doc.add_heading("Time Series Data", 0)
-        doc.add_paragraph(f"Grid Point: Lat {lat:.4f}, Lon {lon:.4f}")
-        if start and end:
-            doc.add_paragraph(f"Date Range: {start.date()} → {end.date()}")
-
-        # 3) Convert CSV string → table
-        lines = csv_buf.getvalue().splitlines()
-        headers = lines[0].split(",")
-
-        table = doc.add_table(rows=1, cols=len(headers))
-        hdr_cells = table.rows[0].cells
-        for i, h in enumerate(headers):
-            hdr_cells[i].text = h
-
-        for line in lines[1:]:
-            row_cells = table.add_row().cells
-            for i, val in enumerate(line.split(",")):
-                row_cells[i].text = val
-
-        # 4) Save Word doc to BytesIO
-        buf = io.BytesIO()
-        doc.save(buf)
+    elif filetype == "txt":
+        # Generate plain text from DataFrame
+        buf = io.StringIO()
+        df.to_string(buf, index=False)  # Keeps nice table-like formatting
         buf.seek(0)
 
-        return send_file(
-            buf,
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            as_attachment=True,
-            download_name="timeseries.docx",
+        # Add metadata (lat/lon, date range, dropped columns) at top
+        header = []
+        header.append("Time Series Data")
+        header.append(f"Grid Point: Lat {lat:.4f}, Lon {lon:.4f}")
+        if start and end:
+            header.append(f"Date Range: {start.date()} → {end.date()}")
+        if dropped_columns:
+            header.append(f"Dropped constant columns: {', '.join(dropped_columns)}")
+        header.append("")  # Blank line before table
+
+        content = "\n".join(header) + "\n" + buf.getvalue()
+
+        # Return as downloadable .txt file
+        return Response(
+            content,
+            mimetype="text/plain",
+            headers={"Content-Disposition": "attachment;filename=timeseries.txt"}
         )
+    
+    elif filetype == "docx":
+        print("before trying:The filetype=docx is called")
+        try:
+            logging.info("inside try now. elif docx called")
+            print("The filetype=docx is called")
+            # Create a new Word document
+            doc = Document()
+            
+            # Add metadata as paragraphs
+            doc.add_heading("Time Series Data", level=1)
+            doc.add_paragraph(f"Grid Point: Lat {lat:.4f}, Lon {lon:.4f}")
+            if start and end:
+                doc.add_paragraph(f"Date Range: {start.date()} → {end.date()}")
+            if dropped_columns:
+                doc.add_paragraph(f"Dropped constant columns: {', '.join(dropped_columns)}")
+            doc.add_paragraph("")
 
+            # Sanitize DataFrame (column names and values)
+            df_clean = df.fillna("NaN").astype(str)
+            df_clean.columns = [sanitize_text(col) for col in df_clean.columns]
+            for col in df_clean.columns:
+                df_clean[col] = df_clean[col].apply(sanitize_text)
+            logging.debug(f"DataFrame shape: {df_clean.shape}, columns: {list(df_clean.columns)}")
 
+            # Limit rows to prevent large tables (optional)
+            max_rows = 1000
+            if len(df_clean) > max_rows:
+                logging.warning(f"DataFrame truncated to {max_rows} rows for DOCX")
+                df_clean = df_clean.head(max_rows)
+
+            # Create a table
+            table = doc.add_table(rows=1 + len(df_clean), cols=len(df_clean.columns))
+            table.style = "Light Grid"  # Simpler style for better compatibility
+
+            # Add column headers
+            for j, col in enumerate(df_clean.columns):
+                cell = table.cell(0, j)
+                cell.text = col
+                # Set basic formatting to avoid Word issues
+                paragraph = cell.paragraphs[0]
+                run = paragraph.runs[0] if paragraph.runs else paragraph.add_run(col)
+                run.font.name = "Calibri"
+                run.font.size = None  # Default size
+
+            # Add data rows
+            for i, row in df_clean.iterrows():
+                for j, value in enumerate(row):
+                    cell = table.cell(i + 1, j)
+                    cell.text = value
+                    # Set basic formatting
+                    paragraph = cell.paragraphs[0]
+                    run = paragraph.runs[0] if paragraph.runs else paragraph.add_run(value)
+                    run.font.name = "Calibri"
+                    run.font.size = None
+
+            # Auto-fit table (instead of fixed widths)
+            table.autofit = True
+
+            # Save the document to a BytesIO buffer
+            buf = io.BytesIO()
+            doc.save(buf)
+            buf.seek(0)
+            docx_content = buf.getvalue()
+            logging.debug(f"Generated DOCX file size: {len(docx_content)} bytes")
+            buf.close()
+
+            # Save a copy for debugging (optional, remove in production)
+            with open("debug_timeseries.docx", "wb") as f:
+                f.write(docx_content)
+            logging.debug("Saved debug_timeseries.docx for inspection")
+
+            return Response(
+                docx_content,
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                headers={"Content-Disposition": "attachment;filename=timeseries.docx"}
+            )
+        except Exception as e:
+            logging.error(f"Error generating DOCX: {str(e)}")
+            return "Error generating DOCX file", 500
     else:
         return "Unsupported filetype", 400
 
-
-
-'''@bp.route('/get_timeseries', methods=['POST'])
-def get_timeseries():
-    ds = current_dataset.get('ds')
-    if ds is None:
-        return jsonify({'success': False, 'error': 'No dataset loaded'})
-
-    data = request.get_json()
-    
-    lat, lon = data.get('lat'), data.get('lon')
-    if lat is None or lon is None:
-        return jsonify({'success': False, 'error': 'Coordinates not provided'})
-
-    try:
-        lat_var = lon_var = time_var = None
-        for coord in ds.coords:
-            c = str(coord).lower()
-            if 'lat' in c: lat_var = coord
-            elif 'lon' in c: lon_var = coord
-            elif 'time' in c: time_var = coord
-
-        if not lat_var or not lon_var:
-            return jsonify({'success': False, 'error': 'Lat/Lon not found'})
-
-        point = ds.sel({lat_var: lat, lon_var: lon}, method='nearest')
-        charts = {}
-
-        for var_name in ds.data_vars:
-            var_data = point[var_name]
-            print("variable name is: ", var_name)
-            # skip this variable
-            if var_data.size == 0 or var_data.isnull().all():
-                print(f"Skipping {var_name} (empty or all NaN)")
-                continue
-            # Convert Kelvin to Celsius if units attribute exists
-            units = var_data.attrs.get('units', '').lower()
-            if 'k' in units:  # likely Kelvin
-                var_data = var_data - 273.15
-                var_data.attrs['units'] = 'C'
-                print(f"Converted {var_name} from Kelvin to Celsius")
-
-            if time_var and time_var in var_data.dims:
-                times = var_data[time_var].values
-                values = var_data.values
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(\
-                    x=times,
-                    y=values, 
-                    mode='lines+markers', 
-                    name=var_name,
-                    line=dict(color='blue', width=1, dash='solid'),   # line style
-                    marker=dict(symbol='circle', size=2, color='blue')  # marker style
-                ))
-
-                # Customize layout
-                fig.update_layout(
-                    title=f"Time Series of {var_name}",
-                    xaxis_title='Time',
-                    yaxis_title=var_data.attrs.get('units', 'Value'),
-                    template='plotly',  # other options: 'plotly_dark', 'ggplot2', 'seaborn', etc.
-                    legend=dict(x=0.01, y=0.99)
-                )
-
-                # Optionally set y-axis range, etc.
-                #fig.update_yaxes(rangemode='tozero')  # starts y-axis at 0
-                    
-                charts[var_name] = json.loads(plotly.utils.PlotlyJSONEncoder().encode(fig))
-
-        return jsonify({'success': True, 'charts': charts,
-                        'coordinates': {'lat': float(point[lat_var].values),
-                                        'lon': float(point[lon_var].values)}})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})'''
