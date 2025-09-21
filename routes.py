@@ -476,9 +476,10 @@ def download_timeseries_csv():
     lat, lon = data.get("lat"), data.get("lon")
     start = pd.to_datetime(data.get("startDate")) if data.get("startDate") else None
     end   = pd.to_datetime(data.get("endDate")) + pd.Timedelta(days=1) if data.get("endDate") else None
-    
+    print("1Before download time check", start, end)
+
     filetype = data.get("filetype", "csv")  # default to CSV if not provided
-    keep_constant = data.get("keep_constant", False)  # Option to keep zero-only columns
+    keep_constant = data.get("keep_constant", True)  # Option to keep zero-only columns
 
     # --- Detect coordinates ---
     lat_var = lon_var = time_var = None
@@ -492,12 +493,28 @@ def download_timeseries_csv():
         return "Lat/Lon not found in dataset", 400
 
     # --- Slice time range if provided ---
-    if time_var and start is not None and end is not None:
+    print("before download time check", time_var, start, end)
+    '''if time_var and start is not None and end is not None:
         ds = ds.sel({time_var: slice(start, end)})
         end = end - pd.Timedelta(days=1)
         if ds[time_var].size == 0:
-            return "No data in selected date range", 400
-    
+            return "No data in selected date range", 400'''
+        # --- Slice dataset if time coord + range given ---
+    if time_var and start is not None and end is not None:
+        # Match tz-awareness
+        if pd.api.types.is_datetime64tz_dtype(ds[time_var]):
+            if start.tzinfo is None:
+                start = start.tz_localize(ds[time_var].dt.tz)
+            if end.tzinfo is None:
+                end = end.tz_localize(ds[time_var].dt.tz)
+        else:
+            if start.tzinfo is not None:
+                start = start.tz_convert(None)
+            if end.tzinfo is not None:
+                end = end.tz_convert(None)
+  
+        ds = ds.sel({time_var: slice(start, end)})
+
     # --- Select nearest grid point ---
     point = ds.sel({lat_var: lat, lon_var: lon}, method="nearest")
 

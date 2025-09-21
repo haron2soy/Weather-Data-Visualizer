@@ -24,15 +24,15 @@ function handleGridClick(lat, lon) {
 
         const csvBtn = document.getElementById("downloadCsvBtn");
         csvBtn.style.display = "inline-block";
-        csvBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "xlsx");
+        csvBtn.onclick = () => downloadFile(lat, lon, window.selectedStartDate, window.selectedEndDate, "xlsx");
 
         const txtBtn = document.getElementById("downloadTxtBtn");
         txtBtn.style.display = "inline-block";
-        txtBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "txt");
+        txtBtn.onclick = () => downloadFile(lat, lon, window.selectedStartDate, window.selectedEndDate, "txt");
         
         const docxBtn = document.getElementById("downloadDocxBtn");
         docxBtn.style.display = "inline-block";
-        docxBtn.onclick = () => downloadFile(lat, lon, startDate, endDate, "docx");
+        docxBtn.onclick = () => downloadFile(lat, lon, window.selectedStartDate, window.selectedEndDate, "docx");
         
        /* btn.onclick = () => {
             const startDate = document.getElementById("startDate").value;
@@ -216,7 +216,8 @@ function enableSnapClick() {
 
 function downloadFile(lat, lon, startDate, endDate, filetype) {
     //const url = `/download?lat=${lat}&lon=${lon}&start=${startDate}&end=${endDate}&format=${filetype}`;
-  fetch("/download_timeseries_csv", {
+   console.log("passed dates are:", startDate, endDate)
+    fetch("/download_timeseries_csv", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lat, lon, startDate, endDate, filetype })
