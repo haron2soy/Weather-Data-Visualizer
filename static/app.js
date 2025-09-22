@@ -357,8 +357,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ filepath: uploadedFilepath })
             });
-            console.log("Response status:", res.status, "OK:", res.ok);
-            console.log("Response headers:", [...res.headers.entries()]);
+            //console.log("Response status:", res.status, "OK:", res.ok);
+            //console.log("Response headers:", [...res.headers.entries()]);
 
             // Check if response is JSON
             const contentType = res.headers.get("content-type");
@@ -372,7 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const data = await res.json();
-            console.log("Response data:", data);
+            //console.log("Response data:", data);
             if (data.success) {
                 displayFileInfo(data);
                 fileInfo.style.display = "block";
