@@ -6,4 +6,5 @@ instance/
 .local/
 pytest_cache/
 uploads/
-.replit/
+.replit/"__pycache__/"
+"*.pyc" 
