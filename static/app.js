@@ -108,12 +108,39 @@ function updateCharts(charts) {
         chartDiv.className = 'chart-container';
         container.appendChild(chartDiv);
 
-        Plotly.newPlot(chartDiv.id, chartData.data, chartData.layout);
+        Plotly.newPlot(chartDiv.id, chartData.data, chartData.layout).then(() => {
+            const div = document.getElementById(chartDiv.id);
+
+            // Add hover listener for horizontal line
+            div.on('plotly_hover', function(eventData) {
+                const yHover = eventData.points[0].y;
+
+                Plotly.relayout(div, {
+                    shapes: [{
+                        type: 'line',
+                        xref: 'x',
+                        yref: 'y',
+                        x0: eventData.points[0].xaxis.range[0],
+                        x1: eventData.points[0].xaxis.range[1],
+                        y0: yHover,
+                        y1: yHover,
+                        line: { color: 'blue', width: 2, dash: 'dot' }
+                    }]
+                });
+            });
+
+            // Remove line when unhover
+            div.on('plotly_unhover', function() {
+                Plotly.relayout(div, { shapes: [] });
+            });
+        });
+
         chartCount++;
     }
 
     visualizationSection.style.display = 'block';
 }
+
 
 // Handle grid point clicks
 function handleGridClick(lat, lon) {

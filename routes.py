@@ -246,8 +246,8 @@ def get_timeseries():
                         start = start.tz_convert(None)
                     if end.tzinfo is not None:
                         end = end.tz_convert(None)
-                    
-                ds = ds.sel({time_var: slice(start, end)})
+                end_inclusive = end + pd.Timedelta(days=1)    
+                ds = ds.sel({time_var: slice(start, end_inclusive)})
 
                 
                 #point = ds.sel({time_var: slice(start, end)})
@@ -258,24 +258,95 @@ def get_timeseries():
             
             point = ds.sel({lat_var: lat, lon_var: lon}, method='nearest')
             
-            # generate charts
             charts = {}
             for var in point.data_vars:
                 var_data = point[var]
-                if var_data.size == 0 or var_data.isnull().all(): continue
-                units = var_data.attrs.get('units','').lower()
-                if any(u in units for u in ['k','kelvin']) and (var_data >= 100).all():
+                if var_data.size == 0 or var_data.isnull().all():
+                    continue
+                units = var_data.attrs.get('units', '').lower()
+                if any(u in units for u in ['k', 'kelvin']) and (var_data >= 100).all():
                     var_data = var_data - 273.15
                 if time_var and time_var in var_data.dims:
                     times = var_data[time_var].values
                     values = var_data.values
-                    if len(times)==0 or len(values)==0: continue
+                    if len(times) == 0 or len(values) == 0:
+                        continue
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=times, y=values, mode='lines+markers', name=var))
-                    fig.update_layout(title=f"Time Series of {var}", xaxis_title='Time', yaxis_title=var_data.attrs.get('units','Value'))
+                    fig.add_trace(go.Scatter(
+                        x=times,
+                        y=values,
+                        mode='lines+markers',
+                        name=var,
+                        line=dict(color='#1f77b4', width=2),
+                        marker=dict(size=6, symbol='circle'),
+                        hovertemplate=f'{var}: %{{y:.2f}} {var_data.attrs.get("units", "")}<br>Time: %{{x}}'
+                    ))
+                    valid_values = values[~np.isnan(values)]
+                    if valid_values.size == 0:
+                        continue
+                    ymin = float(np.nanmin(values))
+                    ymax = float(np.nanmax(values))
+                    pad = max(1.0, (ymax - ymin) * 0.1)  # Increased padding for better visibility
+                    ymin = np.floor(ymin - pad)
+                    ymax = np.ceil(ymax + pad)
+
+                    # Horizontal grid lines
+                    h_lines = []
+                    for y in np.arange(ymin, ymax + 1, 1.0):
+                        h_lines.append({
+                            'type': 'line',
+                            'xref': 'paper', 'x0': 0, 'x1': 1,
+                            'yref': 'y', 'y0': y, 'y1': y,
+                            'line': {'width': 0.1, 'color': 'rgba(200, 200, 200, 0.5)'}
+                        })
+
+
+
+                    # Enhanced layout
+                    fig.update_layout(
+                        title=dict(
+                            text=f"Time Series of {var}",
+                            x=0.5,
+                            xanchor='center',
+                            font=dict(size=16, color='#333333')
+                        ),
+                        xaxis_title="Time",
+                        yaxis_title=f"{var} ({var_data.attrs.get('units', 'Value')})",
+                        xaxis=dict(
+                            showgrid=True,
+                            gridcolor='rgba(200, 200, 200, 0.3)',
+                            tickformat='%Y-%m-%d',
+                            tickangle=45
+                        ),
+                        yaxis=dict(
+                            showgrid=True,
+                            gridcolor='rgba(200, 200, 200, 0.3)',
+                            dtick=2,
+                            range=[ymin, ymax],
+                            zeroline=False,
+                                title=dict(
+                                    text=f"{var} ({var_data.attrs.get('units', 'Value')})",
+                                    font=dict(size=14)
+                                ),
+                            #titlefont=dict(size=14),
+                            tickfont=dict(size=12)
+                        ),
+                        shapes=h_lines,
+                        margin=dict(t=50, b=70, l=70, r=30),
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        font=dict(family="Arial", size=12, color='#333333'),
+                        hovermode='x unified',
+                        showlegend=True
+                    )
+
                     charts[var] = json.loads(plotly.utils.PlotlyJSONEncoder().encode(fig))
 
-            return jsonify({'success': True, 'charts': charts, 'coordinates': {'lat': float(point[lat_var].values.item()), 'lon': float(point[lon_var].values.item())}})
+            return jsonify({
+                'success': True,
+                'charts': charts,
+                'coordinates': {'lat': float(point[lat_var].values.item()), 'lon': float(point[lon_var].values.item())}
+            })
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -293,7 +364,9 @@ def download_timeseries_csv():
     data = request.get_json()
     lat, lon = data.get("lat"), data.get("lon")
     start = pd.to_datetime(data.get("startDate")) if data.get("startDate") else None
-    end = pd.to_datetime(data.get("endDate")) if data.get("endDate") else None
+    
+    #end = pd.to_datetime(data.get("endDate")) if data.get("endDate") else None
+    end   = pd.to_datetime(data.get("endDate")) + pd.Timedelta(days=1) if data.get("endDate") else None
     filetype = data.get("filetype", "csv")
     keep_constant = data.get("keep_constant", True)  # Option to keep zero-only columns
 
@@ -332,7 +405,7 @@ def download_timeseries_csv():
                         start = start.tz_convert(None)
                     if end.tzinfo is not None:
                         end = end.tz_convert(None)
-                    
+               # end_inclusive = end + pd.Timedelta(days=1)
                 ds = ds.sel({time_var: slice(start, end)})
 
                 
