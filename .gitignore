@@ -27,6 +27,7 @@ uploads/
 # Local dev tools
 .local/
 pytest_cache/
+<<<<<<< HEAD
 .coverage
 htmlcov/
 
@@ -44,3 +45,8 @@ build/
 # Misc
 *.bak
 *.swp
+=======
+uploads/
+.replit/"__pycache__/"
+"*.pyc" 
+>>>>>>> button
