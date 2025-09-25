@@ -62,10 +62,10 @@ def extract_file_info_logic(filepath):
     try:
         ext = filepath.rsplit('.', 1)[1].lower()
         if ext == 'nc':
-            with xr.open_dataset(filepath, chunks="auto", cache=False) as ds:
+            with xr.open_dataset(filepath, chunks="auto", cache=False, decode_timedelta=True) as ds:
                 info = _collect_dataset_info(ds)
         else:
-            with xr.open_dataset(filepath, engine="cfgrib", chunks="auto", cache=False) as ds:
+            with xr.open_dataset(filepath, engine="cfgrib", chunks="auto", cache=False, decode_timedelta=True) as ds:
                 info = _collect_dataset_info(ds)
 
         # we only keep metadata, not the open handle
@@ -98,78 +98,81 @@ def _collect_dataset_info(ds):
 # -----------------------------
 # Map creation (optimized)
 # -----------------------------
-def create_coverage_map(ds, max_markers=500):
+def create_coverage_map(ds):
+    """
+    Create a Folium map for the dataset coverage area.
+    Loads quickly by omitting all grid markers.
+    Adds a single marker dynamically via JS when user clicks.
+    """
     lat_var = lon_var = None
     for c in ds.coords:
         cl = str(c).lower()
-        if 'lat' in cl: lat_var = c
-        elif 'lon' in cl: lon_var = c
+        if 'lat' in cl:
+            lat_var = c
+        elif 'lon' in cl:
+            lon_var = c
     if not lat_var or not lon_var:
         return None
 
     lats = ds.coords[lat_var].values
     lons = ds.coords[lon_var].values
 
-    '''    # Subsample points for faster map
-    total_points = len(lats) * len(lons)
-    step = max(1, int(np.sqrt(total_points / max_markers)))
-    lats_sub = lats[::step]
-    lons_sub = lons[::step]'''
-
     center_lat, center_lon = float(np.mean(lats)), float(np.mean(lons))
     m = folium.Map(location=[center_lat, center_lon], zoom_start=6, max_bounds=True)
 
-    # Rectangle bounds for dataset
+    # Draw rectangle for dataset bounds
     bounds = [[float(np.min(lats)), float(np.min(lons))],
               [float(np.max(lats)), float(np.max(lons))]]
     folium.Rectangle(
-        bounds=bounds, 
-        color="red", 
-        fill=False, 
-        popup='Data Coverage Area')\
-        .add_to(m)
+        bounds=bounds,
+        color="red",
+        fill=False,
+        popup="Data Coverage Area"
+    ).add_to(m)
 
-    # Only add limited markers
-    for lat in lats:
-        for lon in lons:
-            folium.CircleMarker(
-                location=[float(lat), 
-                float(lon)], 
-                radius=2, 
-                color=None,
-                fill=True,
-                fill_color=None, 
-                fill_opacity=0,
-                weight=0.5,
-                tooltip=f"Click: Lat {lat:.4f}, Lon: {lon:.4f}",)\
-            .add_to(m)
-
-    # Snap click to nearest original lat/lon
+    # Prepare JS arrays for snapping click to nearest grid
     lat_js = "[" + ",".join(map(str, lats)) + "]"
     lon_js = "[" + ",".join(map(str, lons)) + "]"
-    click_script = f"""
+
+    click_script = """
     <script>
     window.addEventListener("load", function() {{
-        var map = {m.get_name()};
+        var map = {map_name};
         var lat_vals = {lat_js};
         var lon_vals = {lon_js};
+
         function findClosest(arr, val) {{
             return arr.reduce(function(prev,curr) {{
                 return (Math.abs(curr-val)<Math.abs(prev-val)?curr:prev);
             }});
         }}
+
         map.on('click', function(e) {{
-            var nearestLat=findClosest(lat_vals,e.latlng.lat);
-            var nearestLon=findClosest(lon_vals,e.latlng.lng);
+            var nearestLat = findClosest(lat_vals, e.latlng.lat);
+            var nearestLon = findClosest(lon_vals, e.latlng.lng);
+
             if(window.parent && typeof window.parent.handleGridClick==='function'){{
-                window.parent.handleGridClick(nearestLat,nearestLon);
+                window.parent.handleGridClick(nearestLat, nearestLon);
+            }}
+
+            if(window.selectedMarker){{
+                window.selectedMarker.setLatLng([nearestLat, nearestLon]);
+            }} else {{
+                window.selectedMarker = L.marker([nearestLat, nearestLon])
+                    .addTo(map)
+                    .bindPopup(`Selected: Lat ${{nearestLat.toFixed(4)}}, Lon ${{nearestLon.toFixed(4)}}`)
+                    .openPopup();
             }}
         }});
     }});
     </script>
-    """
+    """.format(map_name=m.get_name(), lat_js=lat_js, lon_js=lon_js)
+
+
     m.get_root().html.add_child(folium.Element(click_script))
     return m
+
+  
 
 # -----------------------------
 # Routes
@@ -214,7 +217,7 @@ def get_timeseries():
         ext = filepath.rsplit('.', 1)[1].lower()
         engine = None if ext == 'nc' else 'cfgrib'
 
-        with xr.open_dataset(filepath, engine=engine, chunks='auto', cache=False) as ds:
+        with xr.open_dataset(filepath, engine=engine, chunks='auto', cache=False, decode_timedelta=True) as ds:
             # your existing slicing & chart logic here
             lat_var = lon_var = time_var = None
             for c in ds.coords:
@@ -374,7 +377,7 @@ def download_timeseries_csv():
         ext = filepath.rsplit('.', 1)[1].lower()
         engine = None if ext == 'nc' else 'cfgrib'
 
-        with xr.open_dataset(filepath, engine=engine, chunks='auto', cache=False) as ds:
+        with xr.open_dataset(filepath, engine=engine, chunks='auto', cache=False, decode_timedelta=True) as ds:
             lat_var = lon_var = time_var = None
             for c in ds.coords:
                 cl = str(c).lower()
@@ -645,7 +648,7 @@ def process_file(filepath):
     ext = filepath.rsplit('.', 1)[1].lower()
     engine = None if ext == 'nc' else 'cfgrib'
 
-    with xr.open_dataset(filepath, engine=engine, chunks="auto", cache=False) as ds:
+    with xr.open_dataset(filepath, engine=engine, chunks="auto", cache=False, decode_timedelta=True) as ds:
         # create map
         m = create_coverage_map(ds)
         map_html = m._repr_html_() if m else ""
