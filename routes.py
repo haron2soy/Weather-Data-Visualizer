@@ -5,7 +5,12 @@ import logging
 import numpy as np
 import pandas as pd
 import xarray as xr
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import base64
 import folium
+from coverage_map import create_coverage_map
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
 from openpyxl.styles import NamedStyle, Font
@@ -98,7 +103,7 @@ def _collect_dataset_info(ds):
 # -----------------------------
 # Map creation (optimized)
 # -----------------------------
-def create_coverage_map(ds):
+'''def create_coverage_map(ds):
     """
     Create a Folium map for the dataset coverage area.
     Loads quickly by omitting all grid markers.
@@ -170,7 +175,7 @@ def create_coverage_map(ds):
 
 
     m.get_root().html.add_child(folium.Element(click_script))
-    return m
+    return m'''
 
   
 
@@ -202,8 +207,9 @@ def upload_file():
 
 
 
-@bp.route('/get_timeseries', methods=['POST'])
-def get_timeseries():
+#@bp.route('/get_timeseries', methods=['POST'])
+
+'''def get_timeseries():
     filepath = current_dataset.get('filename')
     if not filepath or not os.path.exists(filepath):
         return jsonify({'success': False, 'error': 'No dataset loaded'})
@@ -228,14 +234,14 @@ def get_timeseries():
             if not lat_var or not lon_var:
                 return jsonify({'success': False, 'error': 'Lat/Lon not found'})
 
-            '''# slice time
+            ''' '''# slice time
             sliced_ds = ds
             if time_var and start is not None and end is not None:
                 sliced_ds = ds.sel({time_var: slice(start, end)})
 
-            point = sliced_ds.sel({lat_var: lat, lon_var: lon}, method='nearest')'''
+            point = sliced_ds.sel({lat_var: lat, lon_var: lon}, method='nearest')
             
-            # --- Slice dataset if time coord + range given ---
+            ''' '''# --- Slice dataset if time coord + range given ---
             
             if time_var and start is not None and end is not None:
                 # Match tz-awareness
@@ -350,6 +356,49 @@ def get_timeseries():
                 'charts': charts,
                 'coordinates': {'lat': float(point[lat_var].values.item()), 'lon': float(point[lon_var].values.item())}
             })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})'''
+
+
+@bp.route('/get_timeseries', methods=['POST'])
+def get_timeseries():
+    data = request.get_json()
+    lat, lon = data.get('lat'), data.get('lon')
+    filepath = current_dataset.get("filename")
+    if not filepath: return jsonify({'success': False, 'error': 'No dataset loaded'})
+
+    try:
+        with xr.open_dataset(filepath, chunks="auto", cache=False) as ds:
+            # Detect lat/lon/time dims
+            lat_var = lon_var = time_var = None
+            for c in ds.coords:
+                cl = str(c).lower()
+                if 'lat' in cl: lat_var = c
+                elif 'lon' in cl: lon_var = c
+                elif 'time' in cl or 'date' in cl: time_var = c
+            if not lat_var or not lon_var: return jsonify({'success': False, 'error': 'Lat/Lon not found'})
+
+            point = ds.sel({lat_var: lat, lon_var: lon}, method='nearest')
+            
+            # Generate small PNG chart instead of full Plotly JSON
+
+
+            charts_html = ""
+            for var in point.data_vars:
+                values = point[var].values
+                if np.isnan(values).all(): continue
+                plt.figure(figsize=(4,3))
+                plt.plot(values, marker='o')
+                plt.title(var)
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png', bbox_inches='tight')
+                plt.close()
+                buf.seek(0)
+                encoded = base64.b64encode(buf.read()).decode('utf-8')
+                charts_html += f'<img src="data:image/png;base64,{encoded}"><br>'
+        
+        return jsonify({'success': True, 'charts_html': charts_html})
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

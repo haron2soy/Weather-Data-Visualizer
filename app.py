@@ -7,7 +7,7 @@ from routes import bp as main_bp
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key')
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 30 *100 * 1024 * 1024  # 3GB
+app.config['MAX_CONTENT_LENGTH'] = 30 * 100 * 1024 * 1024  # 3GB
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
