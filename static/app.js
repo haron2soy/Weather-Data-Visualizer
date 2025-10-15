@@ -312,7 +312,9 @@ function downloadFile(lat, lon, startDate, endDate, filetype) {
     fetch("/download_timeseries_csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lon, startDate, endDate, filetype })
+        body: JSON.stringify({ lat, lon, startDate, endDate, filetype, 
+            timeseriesData: window.currentTimeseries
+         })
     })
     .then(response => {
         if (!response.ok) throw new Error("Download failed");
