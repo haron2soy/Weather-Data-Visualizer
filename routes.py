@@ -75,7 +75,7 @@ def extract_file_info_logic(filepath):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-def _collect_dataset_info(ds):
+'''def _collect_dataset_info(ds):
     coords = {
         dim: {
             "min": float(ds.coords[dim].min().values),
@@ -93,7 +93,57 @@ def _collect_dataset_info(ds):
         for var in ds.data_vars
     }
     global_attrs = convert_numpy_types(dict(ds.attrs))
+    return {"coords": coords, "variables": variables, "global_attrs": global_attrs}'''
+from datetime import datetime
+
+def _collect_dataset_info(ds):
+    coords = {}
+    for dim in ds.dims:
+        if dim in ds.coords:
+            min_val = float(ds.coords[dim].min().values)
+            max_val = float(ds.coords[dim].max().values)
+
+            # ✅ Convert time-like coordinates to human-readable ISO strings
+            if "time" in dim.lower():
+                try:
+                    # Assuming nanoseconds since epoch
+                    min_val_dt = datetime.utcfromtimestamp(min_val / 1e9).isoformat(sep=' ')
+                    max_val_dt = datetime.utcfromtimestamp(max_val / 1e9).isoformat(sep=' ')
+                    coords[dim] = {
+                        "min": min_val_dt,
+                        "max": max_val_dt,
+                        "size": int(ds.sizes[dim]),
+                        "is_time": True
+                    }
+                except Exception:
+                    # fallback if conversion fails
+                    coords[dim] = {
+                        "min": min_val,
+                        "max": max_val,
+                        "size": int(ds.sizes[dim]),
+                        "is_time": True
+                    }
+            else:
+                coords[dim] = {
+                    "min": min_val,
+                    "max": max_val,
+                    "size": int(ds.sizes[dim]),
+                    "is_time": False
+                }
+
+    variables = {
+        var: {
+            "dims": list(ds[var].dims),
+            "shape": [int(x) for x in ds[var].shape],
+            "attrs": convert_numpy_types(dict(ds[var].attrs)),
+        }
+        for var in ds.data_vars
+    }
+
+    global_attrs = convert_numpy_types(dict(ds.attrs))
+
     return {"coords": coords, "variables": variables, "global_attrs": global_attrs}
+
 
 # -----------------------------
 # Map creation (optimized)

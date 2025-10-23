@@ -70,13 +70,24 @@ async function uploadDataset(file) {
 // Display file information
 function displayFileInfo(info) {
     let html = '<div class="row">';
+
+    // --- Coordinates section ---
     html += '<div class="col-md-6">';
     html += '<h5>Coordinates</h5><ul>';
     for (const [coord, details] of Object.entries(info.coords)) {
-        html += `<li><strong>${coord}:</strong> ${details.min.toFixed(4)} to ${details.max.toFixed(4)} (${details.size} points)</li>`;
+        const minVal = details.min;
+        const maxVal = details.max;
+
+        // If values are numbers → format with 4 decimals
+        // If strings → show as-is (used for time)
+        const minDisplay = typeof minVal === 'number' ? minVal.toFixed(4) : minVal;
+        const maxDisplay = typeof maxVal === 'number' ? maxVal.toFixed(4) : maxVal;
+
+        html += `<li><strong>${coord}:</strong> ${minDisplay} to ${maxDisplay} (${details.size} points)</li>`;
     }
     html += '</ul></div>';
 
+    // --- Variables section ---
     html += '<div class="col-md-6">';
     html += '<h5>Variables</h5><ul>';
     for (const [varName, details] of Object.entries(info.variables)) {
@@ -84,6 +95,7 @@ function displayFileInfo(info) {
     }
     html += '</ul></div></div>';
 
+    // --- Display ---
     document.getElementById('fileDetails').innerHTML = html;
     fileInfo.style.display = 'block';
     showFileInfo.style.display = 'none';
